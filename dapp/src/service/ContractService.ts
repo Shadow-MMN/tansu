@@ -51,7 +51,7 @@ async function submitTransaction(assembledTx: any): Promise<any> {
   } catch (error: any) {
     // Use enhanced error handling for Freighter-specific issues
     const errorMessage = handleFreighterError(error, "Transaction submission");
-    throw new Error(errorMessage);
+    throw new Error(errorMessage, { cause: error });
   }
 }
 
@@ -229,7 +229,7 @@ export async function voteToProposal(
       checkSimulationError(commitmentsTx);
     } catch (e: any) {
       // Normalize Wasm VM/host errors to user-friendly text
-      throw new Error(parseContractError(e));
+      throw new Error(parseContractError(e), { cause: e });
     }
 
     votePayload = {

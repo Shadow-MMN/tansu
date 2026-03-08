@@ -42,7 +42,7 @@ export class ContributionMetricsService {
       return result.metrics;
     } catch (error) {
       console.error("Failed to fetch contribution metrics:", error);
-      throw new Error("Failed to load contribution metrics");
+      throw new Error("Failed to load contribution metrics", { cause: error });
     }
   }
 

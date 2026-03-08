@@ -42,7 +42,9 @@ export async function validateAnonymousKeyForProject(
     }
   } catch (e: any) {
     if (e?.message?.includes("NoAnonymousVotingConfig")) {
-      throw new Error("Anonymous voting is not configured for this project");
+      throw new Error("Anonymous voting is not configured for this project", {
+        cause: e,
+      });
     }
     // Swallow transient/network errors here so callers can proceed to decryption
   }

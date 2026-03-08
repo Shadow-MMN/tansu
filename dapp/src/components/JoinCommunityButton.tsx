@@ -10,29 +10,23 @@ import { connectedPublicKey } from "utils/store";
 const JoinCommunityButton = () => {
   const publicKey = useStore(connectedPublicKey);
   const [showJoinModal, setShowJoinModal] = useState(false);
-  const [_showProfileModal, _setShowProfileModal] = useState(false);
-  const [_isMember, setIsMember] = useState(false);
+  const [isMember, setIsMember] = useState(false);
   const [_memberData, setMemberData] = useState<Member | null>(null);
 
   const fetchMember = async (address: string) => {
     try {
       const member = await getMember(address);
-      // If getMember succeeds, they are a member regardless of metadata content
       setIsMember(true);
       setMemberData(member);
     } catch {
-      // If getMember fails for any reason, treat as not a member
-      // This is expected behavior for non-members
       setIsMember(false);
       setMemberData(null);
     }
   };
 
   useEffect(() => {
-    // Reset state first to avoid showing stale profile
     setIsMember(false);
     setMemberData(null);
-    _setShowProfileModal(false);
 
     if (publicKey) {
       fetchMember(publicKey);
@@ -43,8 +37,8 @@ const JoinCommunityButton = () => {
     if (publicKey) fetchMember(publicKey);
   };
 
-  // If user is connected (publicKey exists), don't render the button
-  if (publicKey) {
+  // Hide button only when wallet is connected AND user is already a member
+  if (publicKey && isMember) {
     return null;
   }
 
@@ -67,6 +61,7 @@ const JoinCommunityButton = () => {
             handleJoined();
             setShowJoinModal(false);
           }}
+          prefillAddress={publicKey || ""}
         />
       )}
     </>

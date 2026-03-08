@@ -62,7 +62,7 @@ import WalletFundingWrapper from "../components/wallet/WalletFundingWrapper.tsx"
       "[data-connect]",
     ) as HTMLButtonElement;
 
-    async function setLoggedIn(publicKey: string) {
+    function setLoggedIn(publicKey: string) {
       button.textContent = "";
 
       const textElement = document.createElement("span");
@@ -113,7 +113,7 @@ import WalletFundingWrapper from "../components/wallet/WalletFundingWrapper.tsx"
 
           if (address !== currentStored) {
             setConnection(address);
-            await setLoggedIn(address);
+            setLoggedIn(address);
 
             window.dispatchEvent(
               new CustomEvent("walletSwitched", {
@@ -137,7 +137,7 @@ import WalletFundingWrapper from "../components/wallet/WalletFundingWrapper.tsx"
         const { address } = await StellarWalletsKit.authModal();
 
         setConnection(address);
-        await setLoggedIn(address);
+        setLoggedIn(address);
 
         window.dispatchEvent(
           new CustomEvent("walletConnected", {
@@ -152,6 +152,19 @@ import WalletFundingWrapper from "../components/wallet/WalletFundingWrapper.tsx"
     }
 
     if (button) button.addEventListener("click", connectWallet);
+
+    // ── Listen for walletConnected fired by other components (e.g. JoinCommunityModal) ──
+    // This ensures the button updates to "Profile" even when connection
+    // happens outside of this component's own click handler.
+    window.addEventListener("walletConnected", (e: Event) => {
+      const { address } = (e as CustomEvent).detail ?? {};
+      if (address && !button.title) {
+        setLoggedIn(address);
+        if (import.meta.env.MODE !== "test") {
+          checkAndNotifyFunding();
+        }
+      }
+    });
 
     const getStarted = document.querySelector("#get-started");
 

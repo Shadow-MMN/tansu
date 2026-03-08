@@ -3,9 +3,45 @@ import { parseContractError } from "../utils/contractErrors";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { toast } from "utils/utils";
 
-// Correct CommonJS import for Freighter
+// Freighter kept ONLY as legacy fallback — not the primary signer
 import freighterPkg from "@stellar/freighter-api";
-const { isConnected, requestAccess, signTransaction } = freighterPkg;
+const {
+  isConnected,
+  requestAccess,
+  signTransaction: freighterSign,
+} = freighterPkg;
+
+/**
+ * Sign a transaction XDR using whichever wallet is currently active in the kit.
+ * Falls back to Freighter's direct API only if the kit has no active wallet set.
+ */
+async function signWithActiveWallet(xdr: string): Promise<string> {
+  try {
+    const { StellarWalletsKit } =
+      await import("../components/stellar-wallets-kit");
+    const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
+      networkPassphrase: import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE,
+    });
+    return signedTxXdr;
+  } catch (kitErr: any) {
+    const errMsg = kitErr?.message || "";
+    if (errMsg.includes("no wallet") || errMsg.includes("wallet not set")) {
+      const signedResp = await freighterSign(xdr, {
+        networkPassphrase: import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE,
+      });
+      const signedTx =
+        typeof signedResp === "string"
+          ? signedResp
+          : ((signedResp as any)?.signedTxXdr ?? (signedResp as any)?.xdr);
+      if (!signedTx)
+        throw new Error("Failed to get signed transaction XDR", {
+          cause: kitErr,
+        });
+      return signedTx;
+    }
+    throw kitErr;
+  }
+}
 
 /**
  * Decode Soroban transaction return values
@@ -54,12 +90,12 @@ export async function sendSignedTransaction(signedTxXdr: string): Promise<any> {
       signedTxXdr,
       import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE,
     );
-
     sendResponse = await retryAsync(() => (server as any).sendTransaction(tx));
   } catch (err: any) {
     console.error("Soroban sendTransaction error:", err);
     throw new Error(
       "Failed to send Soroban transaction: " + (err?.message || err),
+      { cause: err },
     );
   }
 
@@ -112,21 +148,32 @@ export async function sendXLM(
   donateMessage: string,
 ): Promise<boolean> {
   try {
-    // Freighter's isConnected() returns { isConnected: boolean } in newer versions
-    const connectedResult = await isConnected();
-    const walletConnected =
-      typeof connectedResult === "boolean"
-        ? connectedResult
-        : (connectedResult as any)?.isConnected === true;
+    // Try kit first; if no wallet is set, fall back to Freighter check
+    let senderPublicKey: string | undefined;
 
-    if (!walletConnected) throw new Error("WALLET_NOT_CONNECTED");
+    try {
+      const { StellarWalletsKit } =
+        await import("../components/stellar-wallets-kit");
+      const { address } = await StellarWalletsKit.getAddress();
+      senderPublicKey = address;
+    } catch {
+      // Kit has no wallet — try Freighter legacy path
+      const connectedResult = await isConnected();
+      const walletConnected =
+        typeof connectedResult === "boolean"
+          ? connectedResult
+          : (connectedResult as any)?.isConnected === true;
 
-    // requestAccess() returns { publicKey: string } — handle both shapes
-    const accessResult = await requestAccess();
-    const senderPublicKey =
-      typeof accessResult === "string"
-        ? accessResult
-        : (accessResult as any)?.publicKey || (accessResult as any)?.address;
+      if (!walletConnected) throw new Error("WALLET_NOT_CONNECTED");
+
+      // requestAccess() returns { publicKey: string } — handle both shapes
+      const accessResult = await requestAccess();
+      senderPublicKey =
+        typeof accessResult === "string"
+          ? accessResult
+          : ((accessResult as any)?.publicKey ??
+            (accessResult as any)?.address);
+    }
 
     if (!senderPublicKey) throw new Error("WALLET_NOT_CONNECTED");
 
@@ -134,9 +181,7 @@ export async function sendXLM(
 
     const accountResp = await fetch(
       `${horizonUrl}/accounts/${senderPublicKey}`,
-      {
-        headers: { Accept: "application/json" },
-      },
+      { headers: { Accept: "application/json" } },
     );
     // Detect unfunded or wrong-network wallets
     if (!accountResp.ok) throw new Error("WALLET_UNFUNDED_OR_WRONG_NETWORK");
@@ -177,16 +222,7 @@ export async function sendXLM(
       .build();
 
     // Sign and extract the raw XDR — handle both old and new signTransaction response shapes
-    const signedTxResponse = await signTransaction(transaction.toXDR(), {
-      networkPassphrase: StellarSdk.Networks.TESTNET,
-    });
-    const signedTx =
-      typeof signedTxResponse === "string"
-        ? signedTxResponse
-        : (signedTxResponse as any)?.signedTxXdr ||
-          (signedTxResponse as any)?.xdr;
-
-    if (!signedTx) throw new Error("Failed to get signed transaction XDR");
+    const signedTx = await signWithActiveWallet(transaction.toXDR());
 
     const response = await fetch(`${horizonUrl}/transactions`, {
       method: "POST",
@@ -216,11 +252,7 @@ export async function signAssembledTransaction(
   const preparedXdr = assembledTx.toXDR();
 
   // Sign and extract XDR
-  const signedResp = await signTransaction(preparedXdr, {
-    networkPassphrase: import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE,
-  });
-
-  return signedResp.signedTxXdr;
+  return await signWithActiveWallet(preparedXdr);
 }
 
 /**

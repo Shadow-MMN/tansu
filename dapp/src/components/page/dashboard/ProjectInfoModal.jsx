@@ -5,17 +5,15 @@ import Button from "components/utils/Button";
 import Modal from "../../utils/Modal";
 
 const ProjectInfoModal = ({ projectInfo, onClose }) => {
-  const [projectDomain, setProjectDomain] = useState("");
+  const [projectName, setProjectName] = useState("");
 
-  const getProjectDomain = () => {
-    const domain = loadProjectName();
-    if (domain) {
-      setProjectDomain(domain);
-    }
+  const getProjectName = () => {
+    const name = loadProjectName();
+    if (name) setProjectName(name);
   };
 
   useEffect(() => {
-    getProjectDomain();
+    getProjectName();
   }, []);
 
   return (
@@ -38,7 +36,7 @@ const ProjectInfoModal = ({ projectInfo, onClose }) => {
                   "No project name"}
               </h2>
               <p className="text-sm text-secondary">
-                <span className="font-medium">{projectDomain || "N/A"}</span>
+                <span className="font-medium">{projectName || "N/A"}</span>
               </p>
               <p className="leading-4 text-base text-secondary">
                 {projectInfo?.description || "No description"}
@@ -84,7 +82,7 @@ const ProjectInfoModal = ({ projectInfo, onClose }) => {
               <Button
                 icon="/icons/search-white.svg"
                 size="xl"
-                onClick={() => navigate(`/project?name=${projectDomain}`)}
+                onClick={() => navigate(`/project?name=${projectName}`)}
                 className="whitespace-nowrap"
               >
                 View Details
@@ -93,7 +91,7 @@ const ProjectInfoModal = ({ projectInfo, onClose }) => {
                 type="secondary"
                 icon="/icons/gear.svg"
                 size="xl"
-                onClick={() => navigate(`/governance?name=${projectDomain}`)}
+                onClick={() => navigate(`/governance?name=${projectName}`)}
               >
                 Governance
               </Button>

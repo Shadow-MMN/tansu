@@ -5,7 +5,7 @@ ACCOUNTS = [
 ]
 
 [DOCUMENTATION]
-ORG_DBA = "Tansu - Git on Stellar"
+ORG_DBA = "Tansu - Decentralized project governance on Stellar"  
 ORG_NAME = "Consulting Manao GmbH"
 ORG_URL = "https://tansu.dev"
 ORG_LOGO = "https://github.com/Consulting-Manao/tansu/blob/main/website/static/img/logo.svg"

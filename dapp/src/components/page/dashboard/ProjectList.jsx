@@ -22,6 +22,7 @@ import Spinner from "components/utils/Spinner.tsx";
 const ProjectList = () => {
   const isProjectInfoModalOpen = useStore(projectCardModalOpen);
   const configDataFromStore = useStore(configDataStore);
+
   const [projects, setProjects] = useState(undefined);
   const [filteredProjects, setFilteredProjects] = useState(undefined);
   const [searchTerm, setSearchTerm] = useState("");
@@ -41,16 +42,18 @@ const ProjectList = () => {
   const [currentUIPage, setCurrentUIPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(true);
 
-  // Define the handler function at component level so it's available everywhere
+  const searchTimeoutRef = useRef(null);
+
+  // Modal handlers
   const handleCreateProjectModal = useCallback(() => {
     setShowCreateProjectModal(true);
   }, []);
 
-  // Function to handle closing the modal - simplified to match other modals
   const closeCreateProjectModal = useCallback(() => {
     setShowCreateProjectModal(false);
   }, []);
 
+  // Initial fetch + URL search handling
   useEffect(() => {
     const fetchProjects = async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -61,29 +64,20 @@ const ProjectList = () => {
 
     fetchProjects();
 
-    // Save previous path if coming from another page
     const referrer = document.referrer;
-    if (referrer && !referrer.includes(window.location.host)) {
+    if (referrer && !referrer.includes(window.location.host))
       setPrevPath(referrer);
-    }
 
-    // Check for search parameters in URL
     const searchParams = new URLSearchParams(window.location.search);
     const urlSearchTerm = searchParams.get("search");
-    let searchTimeout;
     if (urlSearchTerm) {
       setSearchTerm(urlSearchTerm);
-      // Set timeout to ensure projects are loaded before searching
-      searchTimeout = setTimeout(() => handleSearch(), 300);
+      setTimeout(() => handleSearch(), 300);
     }
 
-    // Check if searching for a member
     const isMemberSearch = searchParams.get("member") === "true";
-    if (isMemberSearch && urlSearchTerm) {
-      handleMemberSearch(urlSearchTerm);
-    }
+    if (isMemberSearch && urlSearchTerm) handleMemberSearch(urlSearchTerm);
 
-    // Check for stored member profile
     const pendingMemberProfile = sessionStorage.getItem("pendingMemberProfile");
     if (pendingMemberProfile) {
       try {
@@ -91,14 +85,9 @@ const ProjectList = () => {
         setMemberResult(memberData);
         setShowMemberProfileModal(true);
         sessionStorage.removeItem("pendingMemberProfile");
-      } catch (e) {
-        if (import.meta.env.DEV) {
-          console.error("Error loading pending member profile", e);
-        }
-      }
+      } catch {}
     }
 
-    // Check if we should open create project modal
     const openCreateProjectModal = sessionStorage.getItem(
       "openCreateProjectModal",
     );
@@ -107,12 +96,9 @@ const ProjectList = () => {
       sessionStorage.removeItem("openCreateProjectModal");
     }
 
-    // Add event listeners for navbar search
     window.addEventListener("search-projects", handleSearchProjectEvent);
     window.addEventListener("show-member-profile", handleMemberProfileEvent);
     window.addEventListener("search-member", handleSearchMemberEvent);
-
-    // Add event listener for create project modal
     document.addEventListener(
       "show-create-project-modal",
       handleCreateProjectModal,
@@ -123,7 +109,6 @@ const ProjectList = () => {
     );
 
     return () => {
-      if (searchTimeout) clearTimeout(searchTimeout);
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
       window.removeEventListener("search-projects", handleSearchProjectEvent);
       window.removeEventListener(
@@ -142,7 +127,13 @@ const ProjectList = () => {
     };
   }, [handleCreateProjectModal]);
 
-  const searchTimeoutRef = useRef(null);
+  useEffect(() => {
+    setShowProjectInfoModal(isProjectInfoModalOpen);
+  }, [isProjectInfoModalOpen]);
+
+  useEffect(() => {
+    if (projects && searchTerm) handleSearch();
+  }, [projects, searchTerm]);
 
   const handleSearchProjectEvent = useCallback((event) => {
     const term = event.detail;
@@ -164,50 +155,20 @@ const ProjectList = () => {
     setShowMemberProfileModal(true);
   };
 
-  useEffect(() => {
-    if (projects && searchTerm) {
-      handleSearch();
-    }
-  }, [projects, searchTerm]);
-
-  useEffect(() => {
-    setShowProjectInfoModal(isProjectInfoModalOpen);
-  }, [isProjectInfoModalOpen]);
-
-  const projectInfo = configDataFromStore
-    ? {
-        ...configDataFromStore,
-        logoImageLink: configDataFromStore.logoImageLink
-          ? convertGitHubLink(configDataFromStore.logoImageLink)
-          : configDataFromStore.logoImageLink,
-      }
-    : null;
-
   const handleSearch = () => {
     if (!projects) return;
-
     setMemberNotFound(false);
 
-    try {
-      const filtered = projects.filter((project) => {
-        // Safe check for null/undefined projectName
-        return (
-          project &&
-          project.projectName &&
-          project.projectName.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      });
+    const filtered = projects.filter(
+      (project) =>
+        project &&
+        project.projectName &&
+        project.projectName.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
 
-      setFilteredProjects(filtered);
+    setFilteredProjects(filtered);
 
-      if (searchTerm && filtered.length === 0) {
-        checkProjectOnChain(searchTerm);
-      }
-    } catch (_) {
-      // Remove console.error as it's an expected condition
-      // Fallback to empty array on error
-      setFilteredProjects([]);
-    }
+    if (searchTerm && filtered.length === 0) checkProjectOnChain(searchTerm);
   };
 
   const checkProjectOnChain = async (projectName) => {
@@ -216,34 +177,26 @@ const ProjectList = () => {
       const project = await getProjectFromName(projectName);
       if (project && project.name && project.config && project.maintainers) {
         const tomlData = await fetchTomlFromIpfs(project.config.ipfs);
-        if (tomlData) {
-          const configData = extractConfigData(tomlData, project);
-          setConfigInfo(configData);
-        } else {
-          const configData = {
-            projectName: project.name,
-            logoImageLink: undefined,
-            thumbnailImageLink: "",
-            description: "",
-            organizationName: "",
-            officials: {
-              githubLink: project.config.url,
-            },
-            socialLinks: {},
-            authorGithubNames: [],
-            maintainersAddresses: project.maintainers,
-          };
-          setConfigInfo(configData);
-        }
+        const configData = tomlData
+          ? extractConfigData(tomlData, project)
+          : {
+              projectName: project.name,
+              logoImageLink: undefined,
+              thumbnailImageLink: "",
+              description: "",
+              organizationName: "",
+              officials: { githubLink: project.config.url },
+              socialLinks: {},
+              authorGithubNames: [],
+              maintainersAddresses: project.maintainers,
+            };
+        setConfigInfo(configData);
         setIsInOnChain(true);
       } else {
         setIsInOnChain(false);
-        // No toast error for expected "not found" condition
       }
-    } catch (_) {
-      // No toast error for expected "not found" condition
+    } catch {
       setIsInOnChain(false);
-      // Remove console.error as it's an expected condition
     } finally {
       setIsLoading(false);
     }
@@ -252,8 +205,6 @@ const ProjectList = () => {
   const _handleClearSearch = () => {
     setSearchTerm("");
     setMemberNotFound(false);
-
-    // Instead of navigating back, reload home page
     window.location.href = "/";
   };
 
@@ -268,12 +219,8 @@ const ProjectList = () => {
       if (member) {
         setMemberResult(member);
         setShowMemberProfileModal(true);
-      } else {
-        // No toast error for expected "not found" condition
-        setMemberNotFound(true);
-      }
-    } catch (_) {
-      // No toast error for expected "not found" condition
+      } else setMemberNotFound(true);
+    } catch {
       setMemberNotFound(true);
     } finally {
       setIsLoading(false);
@@ -282,7 +229,6 @@ const ProjectList = () => {
 
   const minimalConfig = (project) => ({
     projectName: project.name,
-    domainName: project.name,
     logoImageLink: undefined,
     thumbnailImageLink: "",
     description: "",
@@ -297,24 +243,20 @@ const ProjectList = () => {
     setIsLoadingOnChain(true);
     try {
       const blockchainPage = uiPage - 1;
-      const projects = await getProjectsPage(blockchainPage);
+      const projectsPage = await getProjectsPage(blockchainPage);
 
-      if (projects.length === 0) {
+      if (projectsPage.length === 0) {
         setOnChainProjects([]);
         setHasNextPage(false);
         setIsLoadingOnChain(false);
         return;
       }
 
-      const minimalList = projects.map(minimalConfig);
-      setOnChainProjects(minimalList);
-      setHasNextPage(true);
-      setIsLoadingOnChain(false);
-
       const results = await Promise.allSettled(
-        projects.map((p) => fetchTomlFromIpfs(p.config.ipfs)),
+        projectsPage.map((p) => fetchTomlFromIpfs(p.config.ipfs)),
       );
-      const enrichedList = projects.map((project, i) => {
+
+      const enrichedList = projectsPage.map((project, i) => {
         const result = results[i];
         const tomlData =
           result.status === "fulfilled" ? result.value : undefined;
@@ -322,13 +264,13 @@ const ProjectList = () => {
           ? extractConfigData(tomlData, project)
           : minimalConfig(project);
       });
+
       setOnChainProjects(enrichedList);
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        console.error("Error fetching projects for page:", uiPage, error);
-      }
+      setHasNextPage(true);
+    } catch {
       setOnChainProjects([]);
       setHasNextPage(false);
+    } finally {
       setIsLoadingOnChain(false);
     }
   };
@@ -344,10 +286,10 @@ const ProjectList = () => {
     setCurrentUIPage(nextPage);
     await fetchProjectsForPage(nextPage);
 
-    const allProjectsSection = document.querySelector(".all-projects-section");
-    if (allProjectsSection) {
-      allProjectsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    document.querySelector(".all-projects-section")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   const handlePrevPage = async () => {
@@ -357,14 +299,12 @@ const ProjectList = () => {
     setCurrentUIPage(prevPage);
     await fetchProjectsForPage(prevPage);
 
-    // Scroll to top of All Projects section
-    const allProjectsSection = document.querySelector(".all-projects-section");
-    if (allProjectsSection) {
-      allProjectsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    document.querySelector(".all-projects-section")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
-  // Determine if we should show the featured projects heading
   const showFeaturedHeading =
     !searchTerm ||
     (filteredProjects && filteredProjects.length > 0 && !isInOnChain);
@@ -390,6 +330,15 @@ const ProjectList = () => {
       </button>
     </div>
   );
+
+  const projectInfo = configDataFromStore
+    ? {
+        ...configDataFromStore,
+        logoImageLink: configDataFromStore.logoImageLink
+          ? convertGitHubLink(configDataFromStore.logoImageLink)
+          : configDataFromStore.logoImageLink,
+      }
+    : null;
 
   return (
     <div className="project-list-container relative mx-auto w-full max-w-[984px] px-4">

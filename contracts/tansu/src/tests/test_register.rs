@@ -77,10 +77,7 @@ fn register_name_too_long_error() {
     let setup = create_test_data();
     let _id = init_contract(&setup);
 
-    let name_long = String::from_str(
-        &setup.env,
-        "tansutansutansutansu",
-    );
+    let name_long = String::from_str(&setup.env, "tansutansutansutansu");
     let url = String::from_str(&setup.env, "github.com/tansu");
     let ipfs = String::from_str(&setup.env, "2ef4f49fdd8fa9dc463f1f06a094c26b88710990");
     let maintainers = vec![&setup.env, setup.grogu.clone(), setup.mando.clone()];

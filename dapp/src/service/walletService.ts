@@ -1,81 +1,67 @@
 import { connectedPublicKey } from "utils/store";
 
-const connectionState: {
+interface ConnectionState {
   publicKey: string | undefined;
-  provider: string | undefined;
-} = {
+}
+
+const connectionState: ConnectionState = {
   publicKey: undefined,
-  provider: undefined,
 };
 
 function loadedPublicKey(): string | undefined {
   return connectionState.publicKey;
 }
 
-function loadedProvider(): string | undefined {
-  return connectionState.provider;
-}
-
-function setConnection(publicKey: string, provider: string): void {
+function setConnection(publicKey: string): void {
   connectionState.publicKey = publicKey;
-  connectionState.provider = provider;
 
   localStorage.setItem("publicKey", publicKey);
-  localStorage.setItem("walletProvider", provider);
 
   connectedPublicKey.set(publicKey);
 }
-
 function disconnect(): void {
   connectionState.publicKey = undefined;
-  connectionState.provider = undefined;
 
   localStorage.removeItem("publicKey");
-  localStorage.removeItem("walletProvider");
 
   connectedPublicKey.set("");
 }
 
 export async function checkAndNotifyFunding(): Promise<void> {
   if (import.meta.env.MODE === "test") return;
+
   const publicKey = loadedPublicKey();
   if (!publicKey) return;
 
-  console.log("🔍 Checking wallet funding for:", publicKey);
-
   try {
     const { exists, balance } = await getWalletHealth();
-    console.log("🔍 Wallet health:", { exists, balance });
 
     const minRequired = 1;
     const networkPass = import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE || "";
+
     const network = /Test/i.test(networkPass) ? "testnet" : "mainnet";
 
     if (!exists || balance < minRequired) {
-      console.log("🚨 Wallet needs funding! Opening modal");
       window.dispatchEvent(
         new CustomEvent("openFundingModal", {
           detail: { exists, balance, network },
         }),
       );
-    } else {
-      console.log("✅ Wallet is sufficiently funded");
     }
-  } catch (error) {
-    console.error("❌ Error checking wallet funding:", error);
+  } catch (_) {
+    // Funding check is best-effort; swallow errors silently
   }
 }
 
 function initializeConnection(): void {
   const storedPublicKey = localStorage.getItem("publicKey");
-  const storedProvider = localStorage.getItem("walletProvider");
 
-  if (storedPublicKey && storedProvider) {
+  if (storedPublicKey) {
     connectionState.publicKey = storedPublicKey;
-    connectionState.provider = storedProvider;
+
     connectedPublicKey.set(storedPublicKey);
 
-    // ✅ Check funding for returning users
+    // Check funding for returning users
     setTimeout(() => {
       checkAndNotifyFunding();
     }, 500);
@@ -125,7 +111,6 @@ async function getWalletHealth(): Promise<{
 
 export {
   loadedPublicKey,
-  loadedProvider,
   setConnection,
   disconnect,
   initializeConnection,

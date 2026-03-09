@@ -1,3 +1,3 @@
-# Tansu - Soroban Versioning
+# Tansu
 
 ...

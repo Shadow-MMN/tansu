@@ -188,7 +188,7 @@ const CreateProjectModal: FC<ModalProps> = ({ onClose }) => {
   const handleRegisterProject = async () => {
     setIsLoading(true);
     // Dynamic imports for heavy libs
-    const [{ fetchTomlFromCid }] = await Promise.all([
+    const [{ fetchTomlFromIpfs }] = await Promise.all([
       import("utils/ipfsFunctions"),
     ]);
     const { loadedPublicKey } = await import("@service/walletService");
@@ -243,7 +243,7 @@ ${maintainerGithubs.map((gh) => `[[PRINCIPALS]]\ngithub="${gh}"`).join("\n\n")}
           setProjectRepoInfo(username, repoName);
         }
 
-        const tomlData = await fetchTomlFromCid(project.config.ipfs);
+        const tomlData = await fetchTomlFromIpfs(project.config.ipfs);
         if (tomlData) {
           const configData = extractConfigData(tomlData, project);
           setConfigData(configData);

@@ -1,46 +1,32 @@
 import {
   getIpfsBasicLink,
-  getOutcomeLinkFromIpfs,
-  getProposalLinkFromIpfs,
-  fetchFromIPFS,
-  fetchJSONFromIPFS,
+  fetchTextFromIpfs,
+  fetchJsonFromIpfs,
 } from "utils/ipfsFunctions";
 import type { Proposal, ProposalOutcome } from "types/proposal";
+
+const PROPOSAL_MD_PATH = "/proposal.md";
+const OUTCOMES_JSON_PATH = "/outcomes.json";
 
 /**
  * Fetches proposal markdown content from IPFS
  *
- * @param url - The IPFS CID
+ * @param cid - The IPFS CID
  * @returns The markdown content with image paths corrected, or null if not found
  */
-async function fetchProposalFromIPFS(url: string) {
-  // Validate CID format
-  const validCidPattern = /^(bafy|Qm)[a-zA-Z0-9]{44,}$/;
-  if (!url || !validCidPattern.test(url)) {
-    return null;
-  }
-
+async function fetchProposalFromIPFS(cid: string) {
   try {
-    const proposalUrl = getProposalLinkFromIpfs(url);
-    if (!proposalUrl) {
-      return null;
-    }
+    const content = await fetchTextFromIpfs(cid, PROPOSAL_MD_PATH);
+    if (!content) return null;
 
-    const response = await fetchFromIPFS(proposalUrl);
-    if (!response.ok) {
-      return null;
-    }
-
-    const content = await response.text();
-    const basicUrl = getIpfsBasicLink(url);
+    const basicUrl = getIpfsBasicLink(cid);
+    if (!basicUrl) return content;
 
     // Update relative image paths to absolute IPFS paths
-    const updatedContent = content.replace(
+    return content.replace(
       /!\[([^\]]*)\]\(([^http][^)]+|[^)]+)\)/g,
       `![$1](${basicUrl}/$2)`,
     );
-
-    return updatedContent;
   } catch {
     return null;
   }
@@ -50,22 +36,22 @@ async function fetchProposalFromIPFS(url: string) {
  * Fetches proposal outcome data with precedence: contract outcomes take precedence over XDR
  *
  * @param proposal - The proposal object
- * @returns The outcome data or null if not found
+ * @returns The outcome data (always an object; may be empty so UI can show all three sections)
  */
 export async function fetchProposalOutcomeData(
   proposal: Proposal,
-): Promise<ProposalOutcome | null> {
+): Promise<ProposalOutcome> {
   let outcomeData: ProposalOutcome = {};
 
   // Load IPFS data first (for descriptions and XDR)
   if (proposal.ipfs) {
     try {
-      const outcomeUrl = getOutcomeLinkFromIpfs(proposal.ipfs);
-      if (outcomeUrl) {
-        const ipfsData = await fetchJSONFromIPFS(outcomeUrl);
-        if (ipfsData) {
-          outcomeData = ipfsData;
-        }
+      const ipfsData = await fetchJsonFromIpfs(
+        proposal.ipfs,
+        OUTCOMES_JSON_PATH,
+      );
+      if (ipfsData) {
+        outcomeData = ipfsData;
       }
     } catch (error) {
       console.warn("Failed to load IPFS outcome data:", error);
@@ -105,30 +91,19 @@ export async function fetchProposalOutcomeData(
     }
   }
 
-  // Return merged data if we have any outcomes
-  return Object.keys(outcomeData).length > 0 ? outcomeData : null;
+  // Always return the outcome object so the UI can show all three sections (approved, rejected, cancelled)
+  return outcomeData;
 }
 
 /**
  * Fetches proposal outcome data from IPFS (legacy function)
  *
- * @param url - The IPFS CID
+ * @param cid - The IPFS CID
  * @returns The outcome JSON data or null if not found
  */
-async function fetchOutcomeDataFromIPFS(url: string) {
-  // Validate CID format
-  const validCidPattern = /^(bafy|Qm)[a-zA-Z0-9]{44,}$/;
-  if (!url || !validCidPattern.test(url)) {
-    return null;
-  }
-
+async function fetchOutcomeDataFromIPFS(cid: string) {
   try {
-    const outcomeUrl = getOutcomeLinkFromIpfs(url);
-    if (!outcomeUrl) {
-      return null;
-    }
-
-    return await fetchJSONFromIPFS(outcomeUrl);
+    return await fetchJsonFromIpfs(cid, OUTCOMES_JSON_PATH);
   } catch {
     return null;
   }

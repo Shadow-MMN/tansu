@@ -112,7 +112,8 @@ contract_deploy:  ## Deploy Soroban contract to testnet
   		--source-account $(admin) \
   		--network $(network) \
   		--salt $(shell printf tansu | openssl sha256 | cut -d " " -f2) \
-  		--fee 200 \
+  		--inclusion-fee 200000000 \
+  		--cost \
   		-- \
   		--admin $(shell stellar keys address $(admin)) \
   		> .stellar/tansu_id-$(network) && \
@@ -260,7 +261,7 @@ contract_register:
     	--maintainer $(shell stellar keys address $(admin)) \
     	--name tansu \
     	--maintainers '["$(shell stellar keys address $(admin))", "$(shell stellar keys address grogu-$(network))"]' \
-    	--url https://github.com/tupui/soroban-versioning \
+    	--url https://github.com/Consulting-Manao/tansu \
     	--ipfs bafybeicnbbhyc4vhbuokk57lrmg4hkbvkmtcp6p3ubaptbus6kl2idthki
 
 contract_commit:
@@ -288,4 +289,4 @@ contract_get_commit:
 pre_push_hook:
 	TANSU_CONTRACT_ID=$(tansu_id) \
 	TANSU_PROJECT_KEY=37ae83c06fde1043724743335ac2f3919307892ee6307cce8c0c63eaa549e156 \
-	uv run --with soroban pre-commit/soroban_versioning_pre_push.py
+	uv run --with soroban pre-commit/tansu_pre_push.py

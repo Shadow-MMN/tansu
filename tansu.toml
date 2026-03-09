@@ -8,9 +8,9 @@ ACCOUNTS = [
 ORG_DBA = "Tansu - Git on Stellar"
 ORG_NAME = "Consulting Manao GmbH"
 ORG_URL = "https://tansu.dev"
-ORG_LOGO = "https://github.com/tupui/soroban-versioning/blob/main/website/static/img/logo.svg"
+ORG_LOGO = "https://github.com/Consulting-Manao/tansu/blob/main/website/static/img/logo.svg"
 ORG_DESCRIPTION = "Bringing Git hashes onto Stellar’s blockchain"
-ORG_GITHUB = "https://github.com/tupui/soroban-versioning"
+ORG_GITHUB = "https://github.com/Consulting-Manao/tansu"
 
 [[PRINCIPALS]]
 github = "tupui"

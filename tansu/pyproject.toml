@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tansu"
 version = "1.1.0"
-description = "Tansu - Soroban Versioning"
+description = "Tansu"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "BSD-3-Clause"
@@ -65,9 +65,9 @@ dev = [
 ]
 
 [project.urls]
-homepage = "https://github.com/tupui/soroban-versioning"
-documentation = "https://github.com/tupui/soroban-versioning"
-source = "https://github.com/tupui/soroban-versioning"
+homepage = "https://github.com/Consulting-Manao/tansu"
+documentation = "https://github.com/Consulting-Manao/tansu"
+source = "https://github.com/Consulting-Manao/tansu"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tansu"]

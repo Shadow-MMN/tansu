@@ -2,8 +2,7 @@ import { useState, type FC, useEffect } from "react";
 import Input from "components/utils/Input";
 import Button from "components/utils/Button";
 import FlowProgressModal from "components/utils/FlowProgressModal";
-import { loadedPublicKey } from "@service/walletService";
-import { toast } from "utils/utils";
+import { loadedPublicKey, setConnection } from "@service/walletService";
 import { validateStellarAddress, validateUrl } from "utils/validations";
 import SimpleMarkdownEditor from "components/utils/SimpleMarkdownEditor";
 
@@ -34,79 +33,64 @@ const JoinCommunityModal: FC<{
   const [step, setStep] = useState<number>(1);
   const [error, setError] = useState<string | null>(null);
 
-  // Validation errors
   const [addressError, setAddressError] = useState<string | null>(null);
   const [socialError, setSocialError] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (prefillAddress) {
-      setAddress(prefillAddress);
-    }
+    if (prefillAddress) setAddress(prefillAddress);
   }, [prefillAddress]);
 
   const handleClose = () => {
     // Reload page if joining was successful to show fresh data
-    if (updateSuccessful) {
-      window.location.reload();
-    }
+    if (updateSuccessful) window.location.reload();
 
     // Reset all states when closing
     setUpdateSuccessful(false);
     setStep(0);
     setIsLoading(false);
     setIsUploading(false);
-
     onClose?.();
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setImageError(null);
-
     const file = e.target.files?.[0];
-    if (file) {
-      // Check if it's PNG or JPG
-      const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
-      if (!allowedTypes.includes(file.type)) {
-        setImageError("Please upload a PNG or JPG image");
-        return;
-      }
-
-      // Check file size (limit to 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setImageError("Please upload an image smaller than 5MB");
-        return;
-      }
-
-      const url = URL.createObjectURL(file);
-      setProfileImage({ localUrl: url, source: file });
+    if (!file) return;
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
+    // Check if it's PNG or JPG
+    if (!allowedTypes.includes(file.type)) {
+      setImageError("Please upload a PNG or JPG image");
+      return;
     }
+    // Check file size (limit to 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setImageError("Please upload an image smaller than 5MB");
+      return;
+    }
+    setProfileImage({ localUrl: URL.createObjectURL(file), source: file });
   };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-
     setImageError(null);
-
     const file = e.dataTransfer.files?.[0];
-    if (file) {
-      const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
-      if (!allowedTypes.includes(file.type)) {
-        setImageError("Please upload a PNG or JPG image");
-        return;
-      }
-
-      if (file.size > 5 * 1024 * 1024) {
-        setImageError("Please upload an image smaller than 5MB");
-        return;
-      }
-
-      const url = URL.createObjectURL(file);
-      setProfileImage({ localUrl: url, source: file });
+    if (!file) return;
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
+    if (!allowedTypes.includes(file.type)) {
+      setImageError("Please upload a PNG or JPG image");
+      return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setImageError("Please upload an image smaller than 5MB");
+      return;
+    }
+    setProfileImage({ localUrl: URL.createObjectURL(file), source: file });
   };
 
   const handleRemoveImage = () => {
@@ -116,113 +100,120 @@ const JoinCommunityModal: FC<{
     }
   };
 
-  const hasProfileData = () => {
-    return name.trim() || social.trim() || description.trim() || profileImage;
-  };
+  const hasProfileData = () =>
+    name.trim() || social.trim() || description.trim() || profileImage;
 
   const validateAddressField = (): boolean => {
-    const error = validateStellarAddress(address);
-    setAddressError(error);
-    return error === null;
+    const err = validateStellarAddress(address);
+    setAddressError(err);
+    return err === null;
   };
 
   const validateSocialField = (): boolean => {
-    const error = validateUrl(social);
-    setSocialError(error);
-    return error === null;
+    const err = validateUrl(social);
+    setSocialError(err);
+    return err === null;
   };
 
-  const validateForm = (): boolean => {
-    const isAddressValid = validateAddressField();
-    const isSocialValid = validateSocialField();
+  const validateForm = (): boolean =>
+    validateAddressField() && validateSocialField();
 
-    return isAddressValid && isSocialValid;
+  const doJoinFlow = async (memberAddress: string) => {
+    if (!hasProfileData()) {
+      const { joinCommunityFlow } = await import("@service/FlowService");
+      await joinCommunityFlow({
+        memberAddress,
+        profileFiles: [],
+        onProgress: setStep,
+      });
+      onJoined?.();
+      setUpdateSuccessful(true);
+      setStep(0);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const profileData = {
+        name: name.trim(),
+        description: description.trim(),
+        social: social.trim(),
+      };
+      const profileBlob = new Blob([JSON.stringify(profileData)], {
+        type: "application/json",
+      });
+      const files = [new File([profileBlob], "profile.json")];
+      if (profileImage) {
+        files.push(
+          new File(
+            [profileImage.source],
+            "profile-image." + profileImage.source.type.split("/")[1],
+          ),
+        );
+      }
+      const { joinCommunityFlow } = await import("@service/FlowService");
+      await joinCommunityFlow({
+        memberAddress,
+        profileFiles: files,
+        onProgress: setStep,
+      });
+      onJoined?.();
+      setUpdateSuccessful(true);
+      setStep(0);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleJoin = async () => {
-    if (!validateForm()) {
+    if (!validateForm()) return;
+
+    const publicKey = loadedPublicKey();
+
+    // ── Wallet already connected ────────────────────────────────────────────
+    if (publicKey) {
+      try {
+        setIsLoading(true);
+        setStep(6);
+        await doJoinFlow(address || publicKey);
+      } catch (err: any) {
+        console.error("Join community error:", err);
+        setError(err?.message || "Something went wrong");
+        setStep(0);
+      } finally {
+        setIsLoading(false);
+        setIsUploading(false);
+      }
       return;
     }
 
     try {
-      setIsLoading(true);
-      setStep(6);
+      const { StellarWalletsKit } = await import("../../stellar-wallets-kit");
 
-      // Check if user has provided any profile data
-      if (!hasProfileData()) {
-        // No profile data, use the new flow with empty files
-        const { joinCommunityFlow } = await import("@service/FlowService");
-        await joinCommunityFlow({
-          memberAddress: address,
-          profileFiles: [],
-          onProgress: setStep,
-        });
+      // authModal handles wallet selection + address retrieval in one step,
+      const { address: connectedAddress } = await StellarWalletsKit.authModal();
 
-        toast.success("Success", "You have successfully joined the community!");
-        onJoined?.();
-        setUpdateSuccessful(true);
-        setIsLoading(false);
-        setIsUploading(false);
-        setStep(0); // Reset step to show success screen
-        // Don't close modal immediately - let user close it manually
-        return;
-      }
-
-      // User has profile data, prepare files for IPFS
-      setIsUploading(true);
+      setConnection(connectedAddress);
+      window.dispatchEvent(
+        new CustomEvent("walletConnected", {
+          detail: { address: connectedAddress },
+        }),
+      );
 
       try {
-        // Create profile data JSON
-        const profileData = {
-          name: name.trim(),
-          description: description.trim(),
-          social: social.trim(),
-        };
-
-        const profileBlob = new Blob([JSON.stringify(profileData)], {
-          type: "application/json",
-        });
-
-        // Create files array
-        const files = [new File([profileBlob], "profile.json")];
-
-        // Add image if provided
-        if (profileImage) {
-          files.push(
-            new File(
-              [profileImage.source],
-              "profile-image." + profileImage.source.type.split("/")[1],
-            ),
-          );
-        }
-
-        // Use the new Flow 2
-        const { joinCommunityFlow } = await import("@service/FlowService");
-        await joinCommunityFlow({
-          memberAddress: address,
-          profileFiles: files,
-          onProgress: setStep,
-        });
-
-        toast.success("Success", "You have successfully joined the community!");
-        onJoined?.();
-        setUpdateSuccessful(true);
+        setIsLoading(true);
+        setStep(6);
+        await doJoinFlow(connectedAddress);
+      } catch (err: any) {
+        console.error("Join community error:", err);
+        setError(err?.message || "Something went wrong");
+        setStep(0);
+      } finally {
         setIsLoading(false);
         setIsUploading(false);
-        setStep(0); // Reset step to show success screen
-        // Don't close modal immediately - let user close it manually
-      } catch (ipfsError: any) {
-        console.error("IPFS upload error:", ipfsError);
-        setIsUploading(false);
-        throw ipfsError;
       }
-    } catch (err: any) {
-      console.error("Join community error:", err);
-      setError(err.message || "Something went wrong");
-      setStep(0); // Reset step on error
-    } finally {
-      setIsLoading(false);
-      setIsUploading(false);
+    } catch {
+      // User dismissed the wallet picker modal — silent ignore
     }
   };
 
@@ -310,7 +301,11 @@ const JoinCommunityModal: FC<{
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
                     onDragLeave={() => setIsDragging(false)}
-                    className={`flex flex-col items-center justify-center w-full h-32 border-2 ${imageError ? "border-red-500" : "border-dashed border-[#978AA1]"} ${isDragging ? "bg-zinc-500" : "bg-white"} cursor-pointer bg-zinc-50 hover:bg-zinc-400`}
+                    className={`flex flex-col items-center justify-center w-full h-32 border-2 ${
+                      imageError
+                        ? "border-red-500"
+                        : "border-dashed border-[#978AA1]"
+                    } ${isDragging ? "bg-zinc-500" : "bg-white"} cursor-pointer bg-zinc-50 hover:bg-zinc-400`}
                   >
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       <svg

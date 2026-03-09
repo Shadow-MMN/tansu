@@ -36,4 +36,4 @@ Tansu does not replace GitHub (or your preferred hosting solution) – it comple
 - [Governance & Proposals](developers/governance.mdx): DAO mechanics and proposal lifecycle
 - [On-chain architecture](developers/architecture.mdx): Smart contract and backend details
 
-Tansu is fully open source and under active development. Join us on [GitHub](https://github.com/tupui/soroban-versioning) and help shape the future of decentralized open source governance!
+Tansu is fully open source and under active development. Join us on [GitHub](https://github.com/Consulting-Manao/tansu) and help shape the future of decentralized open source governance!

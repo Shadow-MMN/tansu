@@ -1,6 +1,5 @@
 // @ts-nocheck
 
-import { rpcMock } from "./rpcMock";
 import { WALLET_PK, MOCK_PROJECT, MOCK_PROPOSAL, MOCK_MEMBER } from "./data";
 
 /** Common mocks for Playwright tests */
@@ -366,13 +365,16 @@ export async function applyAllMocks(page) {
   // Stub IPFS helper to make CID deterministic and match upload stub
   await page.route("**/src/utils/ipfsFunctions.ts", async (route) => {
     const body =
-      'export const getIpfsBasicLink = (cid) => (cid ? "https://w3s.link/ipfs/" + cid : "");\n' +
+      'export const getIpfsBasicLink = (cid) => (cid ? "https://" + cid + ".ipfs.storacha.link" : "");\n' +
+      'export const getIpfsUrl = (cid, path) => (cid ? getIpfsBasicLink(cid) + (path || "") : "");\n' +
       'export const getProposalLinkFromIpfs = (cid) => (cid ? getIpfsBasicLink(cid) + "/proposal.md" : "");\n' +
       'export const getOutcomeLinkFromIpfs = (cid) => (cid ? getIpfsBasicLink(cid) + "/outcomes.json" : "");\n' +
       'export const calculateDirectoryCid = async () => "bafytestcidmock";\n' +
-      "export const fetchFromIPFS = async (...args) => fetch(...args);\n" +
-      "export const fetchJSONFromIPFS = async () => null;\n" +
-      "export const fetchTomlFromCid = async () => undefined;\n";
+      "export const fetchFromIpfs = async () => ({ ok: true, text: () => Promise.resolve(''), json: () => Promise.resolve(null), clone: () => ({ ok: true, text: () => Promise.resolve(''), json: () => Promise.resolve(null) }) });\n" +
+      "export const fetchTextFromIpfs = async () => null;\n" +
+      "export const fetchJsonFromIpfs = async () => null;\n" +
+      "export const fetchTomlFromIpfs = async () => undefined;\n" +
+      "export const fetchTomlFromCid = fetchTomlFromIpfs;\n";
     route.fulfill({
       status: 200,
       headers: { "content-type": "application/javascript" },
@@ -380,9 +382,56 @@ export async function applyAllMocks(page) {
     });
   });
 
+  // Mock v2 SDK path
+  await page.route("**/@creit-tech/stellar-wallets-kit/sdk*", async (route) => {
+    const body = `
+    export class StellarWalletsKit {
+      static init(config) { return new StellarWalletsKit(config); }
+      constructor(config) {}
+      async signTransaction(xdr) { return { signedTxXdr: typeof xdr === 'string' ? xdr : String(xdr) }; }
+      async getAddress() { return { address: '${WALLET_PK}' }; }
+      async isConnected() { return true; }
+      async requestAccess() { return true; }
+      async signAuthEntry() { return { signedAuthEntry: 'mock', signerAddress: '${WALLET_PK}' }; }
+      async signMessage() { return { signature: 'mock', signerAddress: '${WALLET_PK}' }; }
+      async getNetwork() { return { network: 'testnet' }; }
+      async setWallet(walletId) { return true; }
+    }
+  `;
+    route.fulfill({
+      status: 200,
+      body,
+      headers: { "content-type": "application/javascript" },
+    });
+  });
+
+  // Mock v2 modules paths
+  await page.route(
+    "**/@creit-tech/stellar-wallets-kit/modules/utils*",
+    async (route) => {
+      route.fulfill({
+        status: 200,
+        body: `export const defaultModules = () => [];`,
+        headers: { "content-type": "application/javascript" },
+      });
+    },
+  );
+
+  await page.route(
+    "**/@creit-tech/stellar-wallets-kit/modules/ledger*",
+    async (route) => {
+      route.fulfill({
+        status: 200,
+        body: `export class LedgerModule { constructor() {} }`,
+        headers: { "content-type": "application/javascript" },
+      });
+    },
+  );
+
   // Wallet kit module stub at import level for both FlowService and ContractService
   await page.route("**/components/stellar-wallets-kit*", async (route) => {
-    const js = `export const kit = { 
+    const js = `
+    export const kit = { 
       signTransaction: async (xdr) => ({ signedTxXdr: typeof xdr === 'string' ? xdr : String(xdr) }),
       getAddress: async () => ({ address: '${WALLET_PK}' }),
       isConnected: async () => true,
@@ -390,11 +439,25 @@ export async function applyAllMocks(page) {
       signAuthEntry: async () => ({ signedAuthEntry: 'mock', signerAddress: '${WALLET_PK}' }),
       signMessage: async () => ({ signature: 'mock', signerAddress: '${WALLET_PK}' }),
       getNetwork: async () => ({ network: 'testnet' }),
-      setWallet: async (walletId) => {
-        console.log('Mock setWallet called with:', walletId);
-        return true;
-      }
-    };`;
+      setWallet: async (walletId) => { return true; }
+    };
+
+    // v2 renamed/restructured - export StellarWalletsKit so existing imports don't break
+    export class StellarWalletsKit {
+      constructor(config) {}
+      async signTransaction(xdr) { return { signedTxXdr: typeof xdr === 'string' ? xdr : String(xdr) }; }
+      async getAddress() { return { address: '${WALLET_PK}' }; }
+      async isConnected() { return true; }
+      async requestAccess() { return true; }
+      async signAuthEntry() { return { signedAuthEntry: 'mock', signerAddress: '${WALLET_PK}' }; }
+      async signMessage() { return { signature: 'mock', signerAddress: '${WALLET_PK}' }; }
+      async getNetwork() { return { network: 'testnet' }; }
+      async setWallet(walletId) { return true; }
+    }
+
+    export const allowAllModules = () => [];
+    export const FREIGHTER_ID = 'freighter';
+  `;
     route.fulfill({
       status: 200,
       body: js,
@@ -471,28 +534,6 @@ export async function applyAllMocks(page) {
     route.fulfill({
       status: 200,
       body,
-      headers: { "content-type": "application/javascript" },
-    });
-  });
-
-  // Mock stellar-wallets-kit at multiple import paths
-  await page.route("**/components/stellar-wallets-kit*", async (route) => {
-    const js = `export const kit = { 
-      signTransaction: async (xdr) => ({ signedTxXdr: typeof xdr === 'string' ? xdr : String(xdr) }),
-      getAddress: async () => ({ address: '${WALLET_PK}' }),
-      isConnected: async () => true,
-      requestAccess: async () => true,
-      signAuthEntry: async () => ({ signedAuthEntry: 'mock', signerAddress: '${WALLET_PK}' }),
-      signMessage: async () => ({ signature: 'mock', signerAddress: '${WALLET_PK}' }),
-      getNetwork: async () => ({ network: 'testnet' }),
-      setWallet: async (walletId) => {
-        console.log('Mock setWallet called with:', walletId);
-        return true;
-      }
-    };`;
-    route.fulfill({
-      status: 200,
-      body: js,
       headers: { "content-type": "application/javascript" },
     });
   });

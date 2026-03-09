@@ -31,8 +31,8 @@ A decentralized application built on Soroban for governance and voting, powered 
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/tupui/soroban-versioning.git
-   cd soroban-versioning/dapp
+   git clone https://github.com/Consulting-Manao/tansu.git
+   cd tansu/dapp
    ```
 
 2. **Install dependencies**:
@@ -46,6 +46,8 @@ A decentralized application built on Soroban for governance and voting, powered 
    ```bash
    cp .env.example .env
    ```
+
+   All variables in `.env.example` are required. `PUBLIC_DELEGATION_API_URL` is used for IPFS upload flows.
 
 See the [contributing guide](../CONTRIBUTING.md) for details about IPFS.
 

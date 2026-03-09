@@ -11,7 +11,6 @@ import {
   type ProposalView,
   type ProposalViewStatus,
 } from "types/proposal";
-// Import the extracted IPFS functions have been moved to ipfsFunctions.ts
 
 export function truncateMiddle(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
@@ -77,8 +76,6 @@ export const modifySlashInXdr = (xdr: string) => {
   return xdr.replaceAll("/", "//");
 };
 
-// IPFS functions are now directly imported from ipfsFunctions.ts
-
 export const modifyProposalStatusToView = (
   status: ProposalStatus,
   endDate: number,
@@ -122,9 +119,32 @@ export const modifyProposalToView = (
   return proposalView;
 };
 
+/** Normalize contract proposal status; handles both { tag: "Approved" } and string/array RPC formats. */
+function normalizeProposalStatus(status: unknown): ProposalStatus {
+  const tag =
+    typeof status === "object" && status !== null && "tag" in status
+      ? (status as { tag: string }).tag
+      : typeof status === "string"
+        ? status
+        : Array.isArray(status) && status.length > 0
+          ? status[0]
+          : "";
+  const normalized = (typeof tag === "string" ? tag : "").toLocaleLowerCase();
+  if (normalized === "malicious") return "cancelled";
+  if (["active", "approved", "rejected", "cancelled"].includes(normalized)) {
+    return normalized as ProposalStatus;
+  }
+  return "active";
+}
+
+/**
+ * Maps contract proposal to app shape. Status is always from on-chain data
+ * (get_proposal); for executed proposals it is never derived client-side.
+ */
 export const modifyProposalFromContract = (
   proposal: ContractProposal,
 ): Proposal => {
+  const status = normalizeProposalStatus(proposal.status);
   if (proposal.vote_data.public_voting) {
     const publicVotes = proposal.vote_data.votes.filter(
       (v: Vote) => v.tag === "PublicVote",
@@ -160,7 +180,7 @@ export const modifyProposalFromContract = (
       title: proposal.title,
       ipfs: proposal.ipfs,
       proposer: proposal.proposer,
-      status: proposal.status.tag.toLocaleLowerCase() as ProposalStatus,
+      status,
       voting_ends_at: Number(proposal.vote_data.voting_ends_at),
       outcomes_contract: proposal.outcomes_contract || null,
       voteStatus: {
@@ -216,7 +236,7 @@ export const modifyProposalFromContract = (
     title: proposal.title,
     ipfs: proposal.ipfs,
     proposer: proposal.proposer,
-    status: proposal.status.tag.toLocaleLowerCase() as ProposalStatus,
+    status,
     voting_ends_at: Number(proposal.vote_data.voting_ends_at),
     outcomes_contract: proposal.outcomes_contract || null,
     voteStatus: {

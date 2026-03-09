@@ -19,19 +19,14 @@ const VotingResult: FC<Props> = ({
   countsOverride,
 }) => {
   const voteResult = useMemo(() => {
-    if (voteStatus) {
-      let voteResult: VoteType | undefined = undefined;
-      const { approve, abstain, reject } = voteStatus;
-      if (approve.score > abstain.score + reject.score) {
-        voteResult = VoteType.APPROVE;
-      } else if (reject.score > approve.score + abstain.score) {
-        voteResult = VoteType.REJECT;
-      } else {
-        voteResult = VoteType.CANCEL;
-      }
-      return voteResult;
-    }
-    return undefined;
+    if (!voteStatus) return undefined;
+
+    const { approve, abstain, reject } = voteStatus;
+
+    if (approve.score > abstain.score + reject.score) return VoteType.APPROVE;
+    if (reject.score > approve.score + abstain.score) return VoteType.REJECT;
+
+    return VoteType.CANCEL;
   }, [voteStatus]);
 
   return (

@@ -30,7 +30,8 @@ help:   ## show this help
 
 install:  ## install Rust and Soroban-CLI
 	# uv for the pre-push hook
-	curl -LsSf https://astral.sh/uv/install.sh | sh
+	curl -LsSf https://astral.sh/uv/install.sh | sh && \
+	uv tool install pre-commit --with pre-commit-uv && \
 	# install Rust
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh && \
 	# install Soroban and config

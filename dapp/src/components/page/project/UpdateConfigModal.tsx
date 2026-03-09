@@ -23,6 +23,21 @@ import { getProject } from "@service/ReadContractService";
 import { calculateDirectoryCid } from "utils/ipfsFunctions";
 import toml from "toml";
 
+// Validate DBA (Project Full Name): ASCII-only, max 100 chars
+const validateDbaField = (value: string): string | null => {
+  if (!value.trim()) {
+    return "Project full name is required";
+  }
+  if (value.length > 100) {
+    return "Project full name must be 100 characters or fewer";
+  }
+  // Printable ASCII characters only
+  if (!/^[\x20-\x7E]+$/.test(value)) {
+    return "Project full name may only contain ASCII characters";
+  }
+  return null;
+};
+
 const UpdateConfigModal = () => {
   const infoLoaded = useStore(projectInfoLoaded);
   const [showButton, setShowButton] = useState(false);
@@ -53,6 +68,9 @@ const UpdateConfigModal = () => {
   const [addrErrors, setAddrErrors] = useState<(string | null)[]>([null]);
   const [ghErrors, setGhErrors] = useState<(string | null)[]>([null]);
   const [repoError, setRepoError] = useState<string | null>(null);
+  const [projectFullNameError, setProjectFullNameError] = useState<
+    string | null
+  >(null);
 
   // pre-fill from current config and gate by maintainer status
   useEffect(() => {
@@ -81,7 +99,6 @@ const UpdateConfigModal = () => {
     setGhErrors(projectInfo.maintainers.map(() => null));
 
     // Show button only if the connected wallet is a maintainer
-    // Use the same approach as other project actions
     import("@service/walletService")
       .then(({ loadedPublicKey }) => {
         const publicKey = loadedPublicKey();
@@ -125,10 +142,18 @@ const UpdateConfigModal = () => {
     setGhErrors(newGhErr);
     return ok;
   };
+
   const validateRepo = () => {
     const e = validateGithubUrl(githubRepoUrl);
     setRepoError(e);
     return e === null;
+  };
+
+  // Validate the DBA field and set error state; returns true if valid
+  const validateProjectFullName = (): boolean => {
+    const dbaError = validateDbaField(projectFullName);
+    setProjectFullNameError(dbaError);
+    return dbaError === null;
   };
 
   // build TOML
@@ -292,8 +317,17 @@ const UpdateConfigModal = () => {
                       label="Project Full Name"
                       placeholder="My Awesome Project"
                       value={projectFullName}
-                      onChange={(e) => setProjectFullName(e.target.value)}
-                      description="Human-readable name shown in the UI."
+                      onChange={(e) => {
+                        // Printable ASCII-only sanitization; enforce max 100 chars
+                        const sanitized = e.target.value.replace(
+                          /[^\x20-\x7E]/g,
+                          "",
+                        );
+                        setProjectFullName(sanitized.slice(0, 100));
+                        setProjectFullNameError(null);
+                      }}
+                      description="Human-readable name shown in the UI (up to 100 ASCII characters)."
+                      error={projectFullNameError || undefined}
                     />
 
                     <Input
@@ -333,7 +367,9 @@ const UpdateConfigModal = () => {
                       </Button>
                       <Button
                         onClick={() => {
-                          if (validateRepo()) setStep(3);
+                          const isRepoValid = validateRepo();
+                          const isDbaValid = validateProjectFullName();
+                          if (isRepoValid && isDbaValid) setStep(3);
                         }}
                       >
                         Next

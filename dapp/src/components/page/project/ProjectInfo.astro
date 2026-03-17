@@ -35,6 +35,8 @@ import Button from "components/utils/Button";
                   class="text-base sm:text-lg text-secondary"
                 >
                 </p>
+                <div id="project-sync-status" class="flex items-center gap-3">
+                </div>
               </div>
               <div data-component="LatestCommit">
                 <LatestCommit client:only />
@@ -476,15 +478,24 @@ import Button from "components/utils/Button";
           }
         }
 
+        const isSoftwareProject = configData?.projectType === "SOFTWARE";
+
         const syncStatusContainer = document.getElementById(
           "project-sync-status",
         );
         if (syncStatusContainer) {
           syncStatusContainer.replaceChildren();
-          syncStatusContainer.appendChild(createTansuTomlLink(projectInfo));
 
+          // SOFTWARE: leave this container empty — tansu.toml + commit badge
+          // are rendered in the existing GitHub UI section (not here).
+          // GENERIC: this is the sole place tansu.toml is rendered.
+          if (!isSoftwareProject) {
+            syncStatusContainer.appendChild(createTansuTomlLink(projectInfo));
+          }
+        }
+
+        if (syncStatusContainer && isSoftwareProject) {
           // Add commit badge - only for SOFTWARE projects
-          const isSoftwareProject = configData?.projectType === "SOFTWARE";
           if (isSoftwareProject) {
             const latestSha = loadProjectLatestSha();
             const commitComponent = document.createElement("div");
@@ -578,7 +589,6 @@ import Button from "components/utils/Button";
         };
 
         // Set up commit data for LastHashModal - only for a SOFTWARE project
-        const isSoftwareProject = configData?.projectType === "SOFTWARE";
         if (isSoftwareProject) {
           const latestSha = loadProjectLatestSha();
           if (latestSha) {
@@ -658,6 +668,12 @@ import Button from "components/utils/Button";
 
     projectHasSubProjects.subscribe((hasSubProjects) => {
       if (!hasSubProjects) return;
+
+      // SOFTWARE projects render tansu.toml in their own GitHub UI section.
+      // Do not touch #project-sync-status for them — it would cause duplication.
+      const configData = loadConfigData();
+      if (configData?.projectType === "SOFTWARE") return;
+
       const syncStatusContainer = document.getElementById(
         "project-sync-status",
       );

@@ -69,6 +69,7 @@ const UpdateConfigModal = () => {
   const [orgUrl, setOrgUrl] = useState("");
   const [orgLogo, setOrgLogo] = useState("");
   const [orgDescription, setOrgDescription] = useState("");
+  const [readmeContent, setReadmeContent] = useState("");
 
   // errors
   const [addrErrors, setAddrErrors] = useState<(string | null)[]>([null]);
@@ -103,6 +104,7 @@ const UpdateConfigModal = () => {
 
     setAddrErrors(projectInfo.maintainers.map(() => null));
     setGhErrors(projectInfo.maintainers.map(() => null));
+    setReadmeContent(cfg?.readmeContent || "");
 
     // Show button only if the connected wallet is a maintainer
     import("@service/walletService")
@@ -370,6 +372,14 @@ const UpdateConfigModal = () => {
                           setRepoError(null);
                         }}
                         error={repoError || undefined}
+                      />
+                    )}
+                    {!isSoftwareProject && (
+                      <Textarea
+                        label="README"
+                        value={readmeContent}
+                        onChange={(e) => setReadmeContent(e.target.value)}
+                        description="Project README content (Markdown)"
                       />
                     )}
 

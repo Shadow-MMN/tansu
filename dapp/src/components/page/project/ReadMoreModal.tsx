@@ -179,7 +179,7 @@ const ReadMoreModal: FC<ReadMoreModalProps> = ({
               </div>
               <div className="markdown-body border border-gray-200 rounded h-auto max-h-[60vh] overflow-y-auto overflow-x-hidden p-4">
                 <Markdown options={{ overrides: markdownOverrides }}>
-                  {readmeContent}
+                  {readmeContent || projectData?.description || ""}
                 </Markdown>
               </div>
             </div>

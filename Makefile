@@ -26,6 +26,9 @@ override domain_wasm_hash = $(shell stellar contract fetch --id $(domain_contrac
 
 override collateral_contract_id = $(shell stellar contract id asset --asset native --network $(network))
 
+override nqg_contract_id = CAM3VZX47TCQWCEYGXEDTSIJYKIVM6AWMFR7VTFYTETXFO53I5LOZGBT
+override nqg_wasm_hash = c845605a5997fa425cc769dbb50d1b208e78806efaba243e174a950f1f4ae79c
+
 # Add help text after each target name starting with '\#\#'
 help:   ## show this help
 	@echo -e "Help for this makefile\n"
@@ -228,6 +231,17 @@ contract_set_collateral_contract:  ## Set the SorobanDomain contract address
 		--admin $(shell stellar keys address $(admin)) \
 		--collateral_contract '{"address":"$(collateral_contract_id)","wasm_hash":null}'
 
+contract_set_nqg_contract:  ## Set the NQG contract address and project using it
+	stellar contract invoke \
+    	--source-account $(admin) \
+    	--network $(network) \
+    	--id $(tansu_id) \
+    	-- \
+    	set_nqg_contract \
+		--admin $(shell stellar keys address $(admin)) \
+		--nqg_contract '{"address":"$(nqg_contract_id)","wasm_hash":"$(nqg_wasm_hash)"}' \
+		--project stellarpg
+
 # --------- Testnet --------- #
 
 testnet_reset:  ## Playbook for testnet reset
@@ -300,3 +314,14 @@ pre_push_hook:
 	TANSU_CONTRACT_ID=$(tansu_id) \
 	TANSU_PROJECT_KEY=37ae83c06fde1043724743335ac2f3919307892ee6307cce8c0c63eaa549e156 \
 	uv run --with soroban pre-commit/tansu_pre_push.py
+
+# --------- NQG --------- #
+
+nqg:
+	stellar contract invoke \
+	  --source-account $(admin) \
+	  --network testnet \
+	  --id $(nqg_contract_id) \
+	  -- \
+	  get_voting_power_for_user \
+	  --user $(admin)

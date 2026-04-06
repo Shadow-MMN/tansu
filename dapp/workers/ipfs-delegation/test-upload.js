@@ -42,7 +42,10 @@ async function packFilesToCar(files) {
     },
   });
 
-  await stream.pipeThrough(captureRoot).pipeThrough(carEncoder).pipeTo(collectStream);
+  await stream
+    .pipeThrough(captureRoot)
+    .pipeThrough(carEncoder)
+    .pipeTo(collectStream);
 
   if (!rootCID) {
     throw new Error("Failed to compute test CID");

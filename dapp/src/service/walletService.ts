@@ -76,8 +76,12 @@ async function initializeConnection(): Promise<void> {
     } else if (!address) {
       disconnect();
     }
-  } catch {
-    disconnect();
+  } catch (err: any) {
+    const msg = err?.message || "";
+    // Only disconnect on unexpected errors
+    if (!msg.includes("no wallet") && !msg.includes("wallet not set")) {
+      disconnect();
+    }
   } finally {
     walletInitialized.set(true);
   }

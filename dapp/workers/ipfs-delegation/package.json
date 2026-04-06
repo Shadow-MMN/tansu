@@ -1,0 +1,19 @@
+{
+  "name": "ipfs-proxy-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for uploading CAR files to IPFS via dual providers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "test": "bun test-upload.js",
+    "deploy:testnet": "wrangler deploy --env testnet",
+    "deploy:production": "wrangler deploy --env production"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251117.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.47.0"
+  },
+  "type": "module"
+}

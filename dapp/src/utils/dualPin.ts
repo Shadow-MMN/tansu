@@ -1,119 +1,127 @@
 /**
- * Dual IPFS Pinning Utility
+ * Dual IPFS upload client for the dApp.
  *
- * Uploads data to both Storacha (primary) and Filebase (backup) to ensure
- * redundancy. If one provider fails, the other still serves as a backup.
- *
- * Usage: wrap any upload call with `dualPin` to automatically pin to Filebase
- * after the primary Storacha upload succeeds.
+ * The browser never uses FILEBASE_TOKEN or PINATA_JWT directly.
+ * Those credentials stay on the delegation worker, and this module
+ * sends the CAR payload plus expected CID to that worker.
  */
 
-const FILEBASE_API_URL = "https://api.filebase.io/v1/ipfs";
+const DUAL_PIN_TIMEOUT_MS = 60_000;
 
-type PinResult = {
-  cid: string;
-  pinned: boolean;
-  provider: string;
+interface DualUploadApiResponse {
+  cid?: string;
+  success?: boolean;
+  filebase?: boolean;
+  pinata?: boolean;
   error?: string;
-};
+  message?: string;
+}
 
-/**
- * Pin a CID to Filebase as backup.
- *
- * Requires FILEBASE_API_KEY env var to be set.
- * If the key is missing, this is a no-op (graceful degradation).
- */
-export async function pinToFilebase(cid: string): Promise<PinResult> {
-  const apiKey = import.meta.env.FILEBASE_API_KEY;
-  if (!apiKey) {
-    console.warn("[DualPin] FILEBASE_API_KEY not set, skipping Filebase pin");
-    return {
-      cid,
-      pinned: false,
-      provider: "filebase",
-      error: "API key not configured",
-    };
-  }
+export interface DualUploadResult {
+  cid: string;
+  success: boolean;
+  filebase: boolean;
+  pinata: boolean;
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") ?? "";
 
   try {
-    const res = await fetch(`${FILEBASE_API_URL}/pins`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        cid,
-        name: `tansu-backup-${cid.slice(0, 12)}`,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (res.ok) {
-      console.info(`[DualPin] Filebase pin succeeded for CID: ${cid}`);
-      return { cid, pinned: true, provider: "filebase" };
+    if (contentType.includes("application/json")) {
+      const data = (await response.json()) as DualUploadApiResponse;
+      return data.error ?? data.message ?? "Dual upload failed";
     }
 
-    const text = await res.text();
-    console.warn(`[DualPin] Filebase pin failed: ${res.status} ${text}`);
-    return {
-      cid,
-      pinned: false,
-      provider: "filebase",
-      error: `HTTP ${res.status}`,
-    };
-  } catch (err: any) {
-    console.warn(`[DualPin] Filebase pin error: ${err.message}`);
-    return { cid, pinned: false, provider: "filebase", error: err.message };
-  }
-}
-
-/**
- * Check if a CID is pinned on Filebase.
- */
-export async function checkFilebasePinStatus(cid: string): Promise<boolean> {
-  const apiKey = import.meta.env.FILEBASE_API_KEY;
-  if (!apiKey) return false;
-
-  try {
-    const res = await fetch(`${FILEBASE_API_URL}/pins/${cid}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(8000),
-    });
-    return res.ok;
+    const text = await response.text();
+    return text || "Dual upload failed";
   } catch {
-    return false;
+    return "Dual upload failed";
   }
 }
 
-/**
- * Dual-pin wrapper: executes a primary upload function, then pins the
- * resulting CID to Filebase in the background.
- *
- * @param primaryUpload - The primary upload function (e.g., Storacha)
- * @returns The CID from the primary upload (unchanged)
- */
-export async function dualPin(
-  primaryUpload: () => Promise<string>,
-): Promise<string> {
-  const cid = await primaryUpload();
+function normalizeResult(
+  expectedCid: string,
+  result: DualUploadApiResponse,
+): DualUploadResult {
+  const cid = result.cid;
 
-  // Fire-and-forget Filebase pin (don't block the user flow)
-  pinToFilebase(cid).catch((err) => {
-    console.warn("[DualPin] Background Filebase pin failed:", err.message);
+  if (!cid) {
+    throw new Error("Dual upload response missing CID");
+  }
+
+  if (cid !== expectedCid) {
+    throw new Error(
+      `Critical CID mismatch: expected ${expectedCid}, got ${cid}`,
+    );
+  }
+
+  if (!result.success) {
+    throw new Error(
+      result.error ??
+        result.message ??
+        "Both IPFS providers failed to pin the content",
+    );
+  }
+
+  const normalized: DualUploadResult = {
+    cid,
+    success: true,
+    filebase: Boolean(result.filebase),
+    pinata: Boolean(result.pinata),
+  };
+
+  // Partial success is acceptable because the content is pinned on at least one provider.
+  if (!normalized.filebase) {
+    console.warn("[IPFS] Filebase pin failed for CID:", cid);
+  }
+  if (!normalized.pinata) {
+    console.warn("[IPFS] Pinata pin failed for CID:", cid);
+  }
+
+  return normalized;
+}
+
+export async function dualUpload(
+  cid: string,
+  carBlob: Blob,
+): Promise<DualUploadResult> {
+  if (!cid) {
+    throw new Error("Missing expected CID for dual upload");
+  }
+
+  if (!(carBlob instanceof Blob) || carBlob.size === 0) {
+    throw new Error("Invalid CAR blob for dual upload");
+  }
+
+  // The worker performs the actual Filebase and Pinata uploads with server-side tokens.
+  const response = await fetch(import.meta.env.PUBLIC_DELEGATION_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/vnd.ipld.car",
+      "x-expected-cid": cid,
+    },
+    body: carBlob,
+    signal: AbortSignal.timeout(DUAL_PIN_TIMEOUT_MS),
   });
 
-  return cid;
+  if (!response.ok) {
+    const errorMessage = await readErrorMessage(response);
+    throw new Error(`${errorMessage} (${response.status})`);
+  }
+
+  const result = (await response.json()) as DualUploadApiResponse;
+  return normalizeResult(cid, result);
 }
 
 /**
- * Dual-pin with verification: waits for both uploads to complete.
- * Use this when you need guaranteed dual-pinning before proceeding.
+ * Compatibility wrapper for the existing upload flow.
+ * Existing callers expect only the CID after a successful dual pin.
  */
-export async function dualPinVerified(
-  primaryUpload: () => Promise<string>,
-): Promise<{ cid: string; filebasePinned: boolean }> {
-  const cid = await primaryUpload();
-  const filebaseResult = await pinToFilebase(cid);
-  return { cid, filebasePinned: filebaseResult.pinned };
+export async function uploadWithDelegation(
+  cid: string,
+  carBlob: Blob,
+): Promise<string> {
+  const result = await dualUpload(cid, carBlob);
+  return result.cid;
 }

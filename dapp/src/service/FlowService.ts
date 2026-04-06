@@ -1,4 +1,5 @@
 import { packFilesToCar } from "../utils/ipfsFunctions";
+import { uploadWithDelegation } from "../utils/dualPin";
 import type { OutcomeContract } from "../types/proposal";
 
 //
@@ -43,71 +44,6 @@ interface CreateProjectFlowParams {
   maintainers: string[];
   onProgress?: (step: number) => void;
   additionalFiles?: File[]; // Optional files like README.md for non-software projects
-}
-
-/**
- * Upload files to IPFS using the Proxy Worker.
- * Accepts pre-calculated CID and CAR blob to ensure absolute consistency.
- */
-export async function uploadToIpfsProxy(
-  cid: string,
-  carBlob: Blob,
-): Promise<string> {
-  const response = await fetch(import.meta.env.PUBLIC_IPFS_PROXY_URL, {
-    method: "POST",
-    headers: {
-      "x-expected-cid": cid,
-      "Content-Type": "application/vnd.ipld.car",
-    },
-    body: carBlob,
-    signal: AbortSignal.timeout(60000), // Increased to 60s for production reliability
-  });
-
-  if (!response.ok) {
-    const contentType = response.headers.get("content-type");
-    let errorMessage = "IPFS Proxy upload failed";
-    try {
-      if (contentType?.includes("application/json")) {
-        const data = await response.json();
-        errorMessage = data.error || data.message || errorMessage;
-      } else {
-        const text = await response.text();
-        errorMessage = text || errorMessage;
-      }
-    } catch (parseError) {
-      console.error("Failed to parse error response:", parseError);
-    }
-    throw new Error(`${errorMessage} (${response.status})`);
-  }
-
-  const result = await response.json();
-
-  if (!result.success) {
-    const errorMsg =
-      result.error || "Both IPFS providers failed to pin the content";
-    throw new Error(errorMsg);
-  }
-
-  // Handle partial success: log warnings for observability
-  if (!result.filebase) {
-    console.warn(
-      "[IPFS] Primary provider (Filebase) failed to pin CID:",
-      result.cid,
-    );
-  }
-  if (!result.pinata) {
-    console.warn(
-      "[IPFS] Backup provider (Pinata) failed to pin CID:",
-      result.cid,
-    );
-  }
-
-  // Final validation of returned CID
-  if (!result.cid) {
-    throw new Error("IPFS Proxy response missing CID");
-  }
-
-  return result.cid;
 }
 
 /**
@@ -221,7 +157,7 @@ export async function createProposalFlow({
 
   // Step 3: Upload the pre-calculated CAR to IPFS using the Proxy
   onProgress?.(8); // Uploading to IPFS (UI index 3)
-  const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
+  const uploadedCid = await uploadWithDelegation(cid, carBlob);
 
   // Step 4: Verify CID matches
   if (uploadedCid !== cid) {
@@ -269,7 +205,7 @@ export async function joinCommunityFlow({
   if (profileFiles.length > 0 && carBlob) {
     // Step 3: Upload the pre-calculated CAR to IPFS using the Proxy
     onProgress?.(8);
-    const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
+    const uploadedCid = await uploadWithDelegation(cid, carBlob);
 
     // Step 4: Verify CID matches
     if (uploadedCid !== cid) {
@@ -336,7 +272,7 @@ export async function updateMemberFlow({
 
   if (profileFiles.length > 0 && carBlob) {
     onProgress?.(8);
-    const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
+    const uploadedCid = await uploadWithDelegation(cid, carBlob);
 
     if (uploadedCid !== cid) {
       throw new Error(
@@ -388,7 +324,7 @@ export async function createProjectFlow({
 
   // Step 3 – Upload the pre-calculated CAR to IPFS using the Proxy
   onProgress?.(8);
-  const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
+  const uploadedCid = await uploadWithDelegation(cid, carBlob);
 
   // Step 4 – Verify CID matches
   if (uploadedCid !== cid) {
@@ -464,7 +400,7 @@ export async function updateConfigFlow({
 
   // Step 3 – upload
   onProgress?.(8);
-  const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
+  const uploadedCid = await uploadWithDelegation(cid, carBlob);
 
   if (uploadedCid !== cid) {
     throw new Error(

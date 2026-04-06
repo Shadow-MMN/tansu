@@ -1,35 +1,57 @@
 export interface Env {
-  FILEBASE_TOKEN: string; // Filebase IPFS API Token (S3 or API token)
-  PINATA_JWT: string; // Pinata API JWT
-  ALLOWED_ORIGINS?: string; // Optional comma-separated list of allowed origins
+  FILEBASE_TOKEN: string;
+  PINATA_JWT: string;
+}
+
+const ALLOWED_ORIGINS = [
+  "http://localhost:4321",
+  "https://testnet.tansu.dev",
+  "https://app.tansu.dev",
+  "https://tansu.xlm.sh",
+  "https://deploy-preview-*--staging-tansu.netlify.app",
+];
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  if (!origin) return {};
+
+  const isAllowed = ALLOWED_ORIGINS.some(
+    (allowed) =>
+      allowed === origin ||
+      (allowed.includes("*") &&
+        new RegExp(`^${allowed.replace(/\*/g, ".*")}$`).test(origin)),
+  );
+
+  if (!isAllowed) return {};
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, x-expected-cid",
+    "Access-Control-Max-Age": "86400",
+  };
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const origins = env.ALLOWED_ORIGINS || "*";
+    const origin = request.headers.get("Origin");
+    const corsHeaders = getCorsHeaders(origin);
 
-    // Handle CORS preflight
+    // Preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": origins,
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, x-expected-cid",
-        },
+        status: 204,
+        headers: corsHeaders,
       });
     }
 
     if (request.method !== "POST") {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Method not allowed. Use POST.",
-        }),
+        JSON.stringify({ success: false, error: "Method not allowed" }),
         {
           status: 405,
           headers: {
+            ...corsHeaders,
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": origins,
           },
         },
       );
@@ -38,32 +60,12 @@ export default {
     const expectedCid = request.headers.get("x-expected-cid");
     if (!expectedCid) {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Missing x-expected-cid header",
-        }),
+        JSON.stringify({ success: false, error: "Missing x-expected-cid" }),
         {
           status: 400,
           headers: {
+            ...corsHeaders,
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": origins,
-          },
-        },
-      );
-    }
-
-    const contentType = request.headers.get("Content-Type");
-    if (!contentType?.includes("application/vnd.ipld.car")) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Invalid Content-Type. Expected application/vnd.ipld.car",
-        }),
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": origins,
           },
         },
       );
@@ -72,39 +74,24 @@ export default {
     let carBlob: Blob;
     try {
       carBlob = await request.blob();
-    } catch (e) {
+      if (carBlob.size === 0) throw new Error();
+    } catch {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Failed to read request body",
-        }),
+        JSON.stringify({ success: false, error: "Invalid CAR body" }),
         {
           status: 400,
           headers: {
+            ...corsHeaders,
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": origins,
           },
         },
       );
     }
 
-    if (carBlob.size === 0) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Empty request body" }),
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": origins,
-          },
-        },
-      );
-    }
-
-    // --- 1. Primary: Filebase CAR Upload ---
-    const filebaseUpload = async () => {
+    // ---------- FILEBASE ----------
+    async function uploadToFilebase() {
       try {
-        const response = await fetch("https://api.filebase.io/v1/ipfs/car", {
+        const res = await fetch("https://api.filebase.io/v1/ipfs/car", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${env.FILEBASE_TOKEN}`,
@@ -112,44 +99,30 @@ export default {
           body: carBlob,
         });
 
-        if (!response.ok) {
-          const text = await response.text();
-          return {
-            ok: false,
-            error: `HTTP ${response.status}: ${text}`,
-            name: "filebase",
-          };
+        if (!res.ok) {
+          return { ok: false, error: `HTTP ${res.status}` };
         }
 
-        const data: any = await response.json();
-        const returnedCid = data.cid || data.CID;
+        const data: any = await res.json();
+        const cid = data.cid || data.CID;
 
-        if (returnedCid && returnedCid !== expectedCid) {
-          return {
-            ok: false,
-            error: `CID mismatch. Expected ${expectedCid}, got ${returnedCid}`,
-            name: "filebase",
-          };
+        if (cid && cid !== expectedCid) {
+          return { ok: false, error: "CID mismatch" };
         }
 
-        return {
-          ok: true,
-          status: response.status,
-          name: "filebase",
-          cid: returnedCid,
-        };
+        return { ok: true };
       } catch (e: any) {
-        return { ok: false, error: e.message, name: "filebase" };
+        return { ok: false, error: e.message };
       }
-    };
+    }
 
-    // --- 2. Backup: Pinata CAR Upload ---
-    const pinataUpload = async (retries = 2): Promise<any> => {
+    // ---------- PINATA ----------
+    async function uploadToPinata(retries = 1): Promise<any> {
       const formData = new FormData();
       formData.append("file", carBlob, `${expectedCid}.car`);
 
       try {
-        const response = await fetch(
+        const res = await fetch(
           "https://api.pinata.cloud/pinning/pinFileToIPFS",
           {
             method: "POST",
@@ -160,70 +133,46 @@ export default {
           },
         );
 
-        if (!response.ok) {
-          if (retries > 0) return pinataUpload(retries - 1);
-          const text = await response.text();
-          return {
-            ok: false,
-            error: `HTTP ${response.status}: ${text}`,
-            name: "pinata",
-          };
+        if (!res.ok) {
+          if (retries > 0) return uploadToPinata(retries - 1);
+          return { ok: false, error: `HTTP ${res.status}` };
         }
 
-        const data: any = await response.json();
-        const returnedCid = data.IpfsHash;
-
-        if (returnedCid && returnedCid !== expectedCid) {
-          return {
-            ok: false,
-            error: `CID mismatch. Expected ${expectedCid}, got ${returnedCid}`,
-            name: "pinata",
-          };
+        const data: any = await res.json();
+        if (data.IpfsHash && data.IpfsHash !== expectedCid) {
+          return { ok: false, error: "CID mismatch" };
         }
 
-        return {
-          ok: true,
-          status: response.status,
-          name: "pinata",
-          cid: returnedCid,
-        };
+        return { ok: true };
       } catch (e: any) {
-        if (retries > 0) return pinataUpload(retries - 1);
-        return { ok: false, error: e.message, name: "pinata" };
+        if (retries > 0) return uploadToPinata(retries - 1);
+        return { ok: false, error: e.message };
       }
-    };
+    }
 
-    // Run uploads in parallel
-    const [fbResult, pnResult] = await Promise.all([
-      filebaseUpload(),
-      pinataUpload(),
+    // Run both
+    const [filebase, pinata] = await Promise.all([
+      uploadToFilebase(),
+      uploadToPinata(),
     ]);
 
-    const success = fbResult.ok || pnResult.ok;
-
-    // Detailed error if everything failed
-    let combinedError = "";
-    if (!success) {
-      combinedError = `All providers failed. Filebase: ${fbResult.error} | Pinata: ${pnResult.error}`;
-    }
+    const success = filebase.ok || pinata.ok;
 
     return new Response(
       JSON.stringify({
         success,
-        filebase: fbResult.ok,
-        pinata: pnResult.ok,
-        error: combinedError || undefined,
-        providers: {
-          filebase: fbResult,
-          pinata: pnResult,
-        },
+        filebase: filebase.ok,
+        pinata: pinata.ok,
+        error: success
+          ? undefined
+          : `Filebase: ${filebase.error} | Pinata: ${pinata.error}`,
         cid: expectedCid,
       }),
       {
         status: success ? 200 : 502,
         headers: {
+          ...corsHeaders,
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": origins,
         },
       },
     );

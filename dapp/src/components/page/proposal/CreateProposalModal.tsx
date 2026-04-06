@@ -397,7 +397,6 @@ const CreateProposalModal = () => {
       const { cid } = await packFilesToCar(files);
       setIpfsLink(getIpfsBasicLink(cid));
 
-
       // Success
       setIsSuccessful(true);
       setStep(0);

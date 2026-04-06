@@ -81,18 +81,25 @@ export async function uploadToIpfsProxy(
   }
 
   const result = await response.json();
-  
+
   if (!result.success) {
-    const errorMsg = result.error || "Both IPFS providers failed to pin the content";
+    const errorMsg =
+      result.error || "Both IPFS providers failed to pin the content";
     throw new Error(errorMsg);
   }
 
   // Handle partial success: log warnings for observability
   if (!result.filebase) {
-    console.warn("[IPFS] Primary provider (Filebase) failed to pin CID:", result.cid);
+    console.warn(
+      "[IPFS] Primary provider (Filebase) failed to pin CID:",
+      result.cid,
+    );
   }
   if (!result.pinata) {
-    console.warn("[IPFS] Backup provider (Pinata) failed to pin CID:", result.cid);
+    console.warn(
+      "[IPFS] Backup provider (Pinata) failed to pin CID:",
+      result.cid,
+    );
   }
 
   // Final validation of returned CID
@@ -102,7 +109,6 @@ export async function uploadToIpfsProxy(
 
   return result.cid;
 }
-
 
 /**
  * Create and sign a proposal transaction
@@ -219,7 +225,9 @@ export async function createProposalFlow({
 
   // Step 4: Verify CID matches
   if (uploadedCid !== cid) {
-    throw new Error(`Critical CID mismatch: expected ${cid}, got ${uploadedCid}`);
+    throw new Error(
+      `Critical CID mismatch: expected ${cid}, got ${uploadedCid}`,
+    );
   }
 
   // Step 5: Send the signed transaction
@@ -265,7 +273,9 @@ export async function joinCommunityFlow({
 
     // Step 4: Verify CID matches
     if (uploadedCid !== cid) {
-      throw new Error(`Critical CID mismatch: expected ${cid}, got ${uploadedCid}`);
+      throw new Error(
+        `Critical CID mismatch: expected ${cid}, got ${uploadedCid}`,
+      );
     }
   }
 
@@ -274,8 +284,6 @@ export async function joinCommunityFlow({
   await sendSignedTransactionLocal(signedTxXdr);
   return true;
 }
-
-
 
 /**
  * Create and sign an update member transaction
@@ -331,7 +339,9 @@ export async function updateMemberFlow({
     const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
 
     if (uploadedCid !== cid) {
-      throw new Error(`Critical CID mismatch: expected ${cid}, got ${uploadedCid}`);
+      throw new Error(
+        `Critical CID mismatch: expected ${cid}, got ${uploadedCid}`,
+      );
     }
   }
 
@@ -382,7 +392,9 @@ export async function createProjectFlow({
 
   // Step 4 – Verify CID matches
   if (uploadedCid !== cid) {
-    throw new Error(`Critical CID mismatch: expected ${cid}, got ${uploadedCid}`);
+    throw new Error(
+      `Critical CID mismatch: expected ${cid}, got ${uploadedCid}`,
+    );
   }
 
   // Step 5 – Send signed transaction
@@ -455,12 +467,12 @@ export async function updateConfigFlow({
   const uploadedCid = await uploadToIpfsProxy(cid, carBlob);
 
   if (uploadedCid !== cid) {
-    throw new Error(`Critical CID mismatch: expected ${cid}, got ${uploadedCid}`);
+    throw new Error(
+      `Critical CID mismatch: expected ${cid}, got ${uploadedCid}`,
+    );
   }
 
   onProgress?.(9);
   await sendSignedTransaction(signedTxXdr);
   return true;
 }
-
-

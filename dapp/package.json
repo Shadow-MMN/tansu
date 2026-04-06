@@ -58,7 +58,6 @@
     "tailwindcss": "^4.2.2",
     "ts-prune": "^0.10.3",
     "vitest": "4.1.2",
-    "wrangler": "^4.80.0",
     "zod": "^4.3.6"
   },
   "name": "dapp",
@@ -77,8 +76,6 @@
     "lint": "prettier -c . && eslint src/ --ext .ts,.tsx,.jsx && ts-prune --project tsconfig.json && bun scripts/validate-contract-errors.js",
     "validate-errors": "bun scripts/validate-contract-errors.js",
     "format": "prettier --write .",
-    "worker:dev": "wrangler dev workers/ipfs-delegation/src/index.ts",
-    "worker:deploy": "wrangler deploy workers/ipfs-delegation/src/index.ts",
     "audit": "bun run build:lighthouse && bunx serve dist -l 3000 & sleep 8 && bunx lighthouse http://localhost:3000 --output=json --output-path=./lighthouse-local-results.json --chrome-flags=\"--headless --disable-dev-shm-usage\" && pkill -f serve && cat lighthouse-local-results.json | jq '.categories | with_entries(.value = .value.score)'"
   },
   "type": "module",

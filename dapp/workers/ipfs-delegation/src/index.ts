@@ -1,6 +1,25 @@
+/**
+ * Cloudflare Worker for delegated dual-provider IPFS uploads.
+ *
+ * The dapp sends a signed message authorizing the expected CID plus the CAR
+ * content to upload. The worker verifies the signature before uploading to
+ * Filebase and Pinata in parallel.
+ */
+
+import { Keypair } from "@stellar/stellar-sdk";
+import { Buffer } from "buffer";
+
 export interface Env {
   FILEBASE_TOKEN: string;
   PINATA_JWT: string;
+}
+
+interface UploadRequest {
+  cid: string;
+  message: string;
+  signature: string;
+  signerAddress: string;
+  car: string;
 }
 
 const ALLOWED_ORIGINS = [
@@ -26,9 +45,42 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, x-expected-cid",
+    "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
   };
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+}
+
+function buildUploadBlob(base64Car: string): Blob {
+  return new Blob([decodeBase64(base64Car)], {
+    type: "application/vnd.ipld.car",
+  });
+}
+
+function validateUploadRequest(body: UploadRequest): void {
+  const { cid, message, signature, signerAddress, car } = body;
+
+  if (!cid || !message || !signature || !signerAddress || !car) {
+    throw new Error(
+      "Missing required fields: cid, message, signature, signerAddress and car",
+    );
+  }
+
+  if (!message.includes(`CID: ${cid}`)) {
+    throw new Error("Signed message does not contain the expected CID");
+  }
+
+  const verified = Keypair.fromPublicKey(signerAddress).verify(
+    Buffer.from(new TextEncoder().encode(message)),
+    Buffer.from(decodeBase64(signature)),
+  );
+
+  if (!verified) {
+    throw new Error("Message signature is invalid for the signer address");
+  }
 }
 
 export default {
@@ -57,10 +109,16 @@ export default {
       );
     }
 
-    const expectedCid = request.headers.get("x-expected-cid");
-    if (!expectedCid) {
+    let body: UploadRequest;
+    try {
+      body = (await request.json()) as UploadRequest;
+      validateUploadRequest(body);
+    } catch (error: any) {
       return new Response(
-        JSON.stringify({ success: false, error: "Missing x-expected-cid" }),
+        JSON.stringify({
+          success: false,
+          error: error?.message ?? "Invalid upload request",
+        }),
         {
           status: 400,
           headers: {
@@ -71,11 +129,8 @@ export default {
       );
     }
 
-    let carBlob: Blob;
-    try {
-      carBlob = await request.blob();
-      if (carBlob.size === 0) throw new Error();
-    } catch {
+    const carBlob = buildUploadBlob(body.car);
+    if (carBlob.size === 0) {
       return new Response(
         JSON.stringify({ success: false, error: "Invalid CAR body" }),
         {
@@ -106,7 +161,7 @@ export default {
         const data: any = await res.json();
         const cid = data.cid || data.CID;
 
-        if (cid && cid !== expectedCid) {
+        if (cid && cid !== body.cid) {
           return { ok: false, error: "CID mismatch" };
         }
 
@@ -119,7 +174,7 @@ export default {
     // ---------- PINATA ----------
     async function uploadToPinata(retries = 1): Promise<any> {
       const formData = new FormData();
-      formData.append("file", carBlob, `${expectedCid}.car`);
+      formData.append("file", carBlob, `${body.cid}.car`);
 
       try {
         const res = await fetch(
@@ -139,7 +194,7 @@ export default {
         }
 
         const data: any = await res.json();
-        if (data.IpfsHash && data.IpfsHash !== expectedCid) {
+        if (data.IpfsHash && data.IpfsHash !== body.cid) {
           return { ok: false, error: "CID mismatch" };
         }
 
@@ -163,10 +218,13 @@ export default {
         success,
         filebase: filebase.ok,
         pinata: pinata.ok,
+        message: success
+          ? undefined
+          : `Filebase: ${filebase.error} | Pinata: ${pinata.error}`,
         error: success
           ? undefined
           : `Filebase: ${filebase.error} | Pinata: ${pinata.error}`,
-        cid: expectedCid,
+        cid: body.cid,
       }),
       {
         status: success ? 200 : 502,

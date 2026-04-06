@@ -8,6 +8,7 @@ import freighterPkg from "@stellar/freighter-api";
 const {
   isConnected,
   requestAccess,
+  signMessage: freighterSignMessage,
   signTransaction: freighterSign,
 } = freighterPkg;
 
@@ -38,6 +39,42 @@ async function signWithActiveWallet(xdr: string): Promise<string> {
           cause: kitErr,
         });
       return signedTx;
+    }
+    throw kitErr;
+  }
+}
+
+export async function signMessageWithActiveWallet(
+  message: string,
+): Promise<{ signedMessage: string; signerAddress?: string }> {
+  try {
+    const { StellarWalletsKit } =
+      await import("../components/stellar-wallets-kit");
+    return await StellarWalletsKit.signMessage(message, {
+      networkPassphrase: import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE,
+    });
+  } catch (kitErr: any) {
+    const errMsg = kitErr?.message || "";
+    if (errMsg.includes("no wallet") || errMsg.includes("wallet not set")) {
+      const signedResp = await freighterSignMessage(message, {
+        networkPassphrase: import.meta.env.PUBLIC_SOROBAN_NETWORK_PASSPHRASE,
+      });
+
+      const signedMessage =
+        typeof signedResp?.signedMessage === "string"
+          ? signedResp.signedMessage
+          : undefined;
+
+      if (!signedMessage) {
+        throw new Error("Failed to get signed message from wallet", {
+          cause: kitErr,
+        });
+      }
+
+      return {
+        signedMessage,
+        signerAddress: signedResp.signerAddress,
+      };
     }
     throw kitErr;
   }

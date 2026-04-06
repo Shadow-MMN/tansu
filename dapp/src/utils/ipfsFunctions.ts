@@ -230,6 +230,11 @@ export interface CarPackResult {
   carBlob: Blob;
 }
 
+export async function calculateDirectoryCid(files: File[]): Promise<string> {
+  const { cid } = await packFilesToCar(files);
+  return cid;
+}
+
 /**
  * Packs files into a CAR and calculates root CID deterministically.
  */

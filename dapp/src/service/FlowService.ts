@@ -157,7 +157,7 @@ export async function createProposalFlow({
 
   // Step 3: Upload the pre-calculated CAR to IPFS using the Proxy
   onProgress?.(8); // Uploading to IPFS (UI index 3)
-  const uploadedCid = await uploadWithDelegation(cid, carBlob);
+  const uploadedCid = await uploadWithDelegation({ cid, carBlob });
 
   // Step 4: Verify CID matches
   if (uploadedCid !== cid) {
@@ -205,7 +205,7 @@ export async function joinCommunityFlow({
   if (profileFiles.length > 0 && carBlob) {
     // Step 3: Upload the pre-calculated CAR to IPFS using the Proxy
     onProgress?.(8);
-    const uploadedCid = await uploadWithDelegation(cid, carBlob);
+    const uploadedCid = await uploadWithDelegation({ cid, carBlob });
 
     // Step 4: Verify CID matches
     if (uploadedCid !== cid) {
@@ -272,7 +272,7 @@ export async function updateMemberFlow({
 
   if (profileFiles.length > 0 && carBlob) {
     onProgress?.(8);
-    const uploadedCid = await uploadWithDelegation(cid, carBlob);
+    const uploadedCid = await uploadWithDelegation({ cid, carBlob });
 
     if (uploadedCid !== cid) {
       throw new Error(
@@ -324,7 +324,7 @@ export async function createProjectFlow({
 
   // Step 3 – Upload the pre-calculated CAR to IPFS using the Proxy
   onProgress?.(8);
-  const uploadedCid = await uploadWithDelegation(cid, carBlob);
+  const uploadedCid = await uploadWithDelegation({ cid, carBlob });
 
   // Step 4 – Verify CID matches
   if (uploadedCid !== cid) {
@@ -400,7 +400,7 @@ export async function updateConfigFlow({
 
   // Step 3 – upload
   onProgress?.(8);
-  const uploadedCid = await uploadWithDelegation(cid, carBlob);
+  const uploadedCid = await uploadWithDelegation({ cid, carBlob });
 
   if (uploadedCid !== cid) {
     throw new Error(

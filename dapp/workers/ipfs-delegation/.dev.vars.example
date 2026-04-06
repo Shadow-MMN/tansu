@@ -1,11 +1,2 @@
-# IPFS Proxy Worker – Local Development Variables
-
-# Endpoint to your deployed Cloudflare IPFS proxy
-PUBLIC_DELEGATION_API_URL=
-
-# API tokens for dual-provider pinning
 FILEBASE_TOKEN=<filebase_api_token>
 PINATA_JWT=<pinata_jwt>
-
-# Optional: restrict allowed origins
-ALLOWED_ORIGINS=*

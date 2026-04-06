@@ -1,36 +1,88 @@
 #!/usr/bin/env node
 import "dotenv/config";
+import { Keypair } from "@stellar/stellar-sdk";
+import { createDirectoryEncoderStream, CAREncoderStream } from "ipfs-car";
 
-/**
- * IPFS Proxy Test Script
- *
- * Sends a CAR-like blob to the IPFS proxy worker
- * and validates the dual-provider response (Filebase + Pinata).
- */
+const DEV_URL = "https://ipfs-testnet.tansu.dev";
+const PROD_URL = "https://ipfs.tansu.dev";
+const ENV = process.env.ENV || "LOCAL";
 
-const WORKER_URL =
-  process.env.PUBLIC_DELEGATION_API_URL ||
-  "https://ipfs-proxy.shadow-ipfs-proxy.workers.dev";
+let WORKER_URL = "http://localhost:8787";
+if (ENV === "DEV") {
+  WORKER_URL = DEV_URL;
+} else if (ENV === "PROD") {
+  WORKER_URL = PROD_URL;
+}
 
-// Example CAR-like content (replace with real CAR when ready)
-const carContent = new Blob(["Hello from IPFS proxy test"], {
-  type: "application/vnd.ipld.car",
-});
+function arrayBufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
 
-// Fake CID to match the test content
-const fakeCid = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
+async function packFilesToCar(files) {
+  const stream = createDirectoryEncoderStream(files);
+  const carEncoder = new CAREncoderStream();
+  let rootCID;
+
+  const captureRoot = new TransformStream({
+    transform(block, controller) {
+      if (!rootCID) rootCID = block.cid.toString();
+      controller.enqueue(block);
+    },
+  });
+
+  const chunks = [];
+  const collectStream = new WritableStream({
+    write(chunk) {
+      chunks.push(chunk);
+    },
+  });
+
+  await stream.pipeThrough(captureRoot).pipeThrough(carEncoder).pipeTo(collectStream);
+
+  if (!rootCID) {
+    throw new Error("Failed to compute test CID");
+  }
+
+  return {
+    cid: rootCID,
+    car: new Blob(chunks, { type: "application/vnd.ipld.car" }),
+  };
+}
 
 async function test() {
-  console.log(`\n🔹 Testing IPFS proxy at: ${WORKER_URL}`);
+  console.log(`Connecting to worker at: ${WORKER_URL}`);
+
+  const testFile = new File(
+    ["This is a test file uploaded via the IPFS delegation worker!"],
+    "test.txt",
+    { type: "text/plain" },
+  );
+  const { cid, car } = await packFilesToCar([testFile]);
+
+  const signer = process.env.TEST_SIGNER_SECRET
+    ? Keypair.fromSecret(process.env.TEST_SIGNER_SECRET)
+    : Keypair.random();
+  const message = `Tansu IPFS upload authorization\nCID: ${cid}`;
+  const signature = signer.sign(new TextEncoder().encode(message));
 
   try {
     const res = await fetch(WORKER_URL, {
       method: "POST",
       headers: {
-        "Content-Type": "application/vnd.ipld.car",
-        "x-expected-cid": fakeCid,
+        "Content-Type": "application/json",
       },
-      body: carContent,
+      body: JSON.stringify({
+        cid,
+        message,
+        signature: arrayBufferToBase64(signature),
+        signerAddress: signer.publicKey(),
+        car: arrayBufferToBase64(await car.arrayBuffer()),
+      }),
     });
 
     let data;
@@ -53,7 +105,7 @@ async function test() {
       );
     }
 
-    console.log("\n✅ Proxy request completed successfully!");
+    console.log("\n✅ Upload request completed successfully!");
     console.log("🔑 CID returned by proxy:", data.cid);
     console.log(
       "✅ Filebase success:",

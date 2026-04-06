@@ -1,18 +1,25 @@
 # IPFS Delegation Worker
 
-Cloudflare Worker that accepts CAR files and uploads them to IPFS via dual-provider pinning (Filebase + Pinata).
+Cloudflare Worker that verifies a signed upload authorization and then uploads
+the CAR file to Filebase and Pinata in parallel.
 
 ## API
 
 ```json
 POST /
 {
-  "x-expected-cid": "<cid>",
-  "Content-Type": "application/vnd.ipld.car"
+  "cid": "<expected-root-cid>",
+  "message": "Tansu IPFS upload authorization\nCID: <expected-root-cid>",
+  "signature": "<base64-signature>",
+  "signerAddress": "G...",
+  "car": "<base64-car-bytes>"
 }
 ```
 
-## Returns JSON:
+The worker verifies that the message signature matches `signerAddress` and that
+the signed message contains the CID being uploaded.
+
+## Returns JSON
 
 ```json
 {
@@ -27,18 +34,17 @@ POST /
 }
 ```
 
-- If both providers fail, success is false and the HTTP status is 502.
-- If one provider fails, the response still returns success: true but includes which provider failed.
+- If both providers fail, `success` is `false` and the HTTP status is `502`.
+- If one provider fails, the request still succeeds as long as the content is
+  pinned by the other provider.
 
 ## Development
 
-Add your environment variables (create .env):
+Add your provider tokens to `.dev.vars`:
 
 ```bash
-PUBLIC_DELEGATION_API_URL=""
 FILEBASE_TOKEN=<filebase_api_token>
 PINATA_JWT=<pinata_jwt>
-ALLOWED_ORIGINS=*
 ```
 
 ### Start the Worker
@@ -75,7 +81,7 @@ bunx wrangler login
 
 ### Security
 
-All secrets are stored in Cloudflare Secrets. Set secrets via wrangler (per environment):
+All secrets are stored in Cloudflare Secrets. Set them with wrangler:
 
 ```bash
 # Development

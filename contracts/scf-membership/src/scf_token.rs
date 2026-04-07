@@ -45,11 +45,7 @@ impl SCFTokenTrait for SCFMembership {
         let admin: Address = e.storage().instance().get(&types::DataKey::Admin).unwrap();
         admin.require_auth();
 
-        let token_id: u32 = e
-            .storage()
-            .instance()
-            .get(&types::DataKey::NextTokenId)
-            .unwrap();
+        let token_id: u32 = Self::next_token_id(e);
 
         e.storage()
             .instance()
@@ -132,6 +128,13 @@ impl SCFTokenTrait for SCFMembership {
         uri_bytes.append(&u32_to_decimal_bytes(e, token_id));
 
         String::from(uri_bytes)
+    }
+
+    fn next_token_id(e: &Env) -> u32 {
+        e.storage()
+            .instance()
+            .get(&types::DataKey::NextTokenId)
+            .unwrap()
     }
 }
 

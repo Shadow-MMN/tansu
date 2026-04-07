@@ -142,6 +142,17 @@ pub trait SCFTokenTrait {
     ///
     /// * If the token does not exist.
     fn token_uri(e: &Env, token_id: u32) -> String;
+
+    /// Returns the next token ID to mint.
+    ///
+    /// # Arguments
+    ///
+    /// * `e` - The environment object.
+    ///
+    /// # Returns
+    ///
+    /// The next token ID in the enumeration.
+    fn next_token_id(e: &Env) -> u32;
 }
 
 pub trait SCFGovernanceTrait {

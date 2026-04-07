@@ -30,8 +30,8 @@ const GATEWAYS: ReadonlyArray<{
     buildUrl: (cid, path) => `https://ipfs.filebase.io/ipfs/${cid}${path}`,
   },
   {
-    name: "pinata",
-    buildUrl: (cid, path) => `https://gateway.pinata.cloud/ipfs/${cid}${path}`,
+    name: "ipfs.io",
+    buildUrl: (cid, path) => `https://ipfs.io/ipfs/${cid}${path}`,
   },
 ];
 
@@ -243,29 +243,40 @@ export async function packFilesToCar(files: File[]): Promise<CarPackResult> {
     await import("ipfs-car");
 
   const stream = createDirectoryEncoderStream(files);
-  const carEncoder = new CAREncoderStream();
   let rootCID: string | undefined;
+  const blocks: any[] = [];
 
-  const captureRoot = new TransformStream({
-    transform(block: any, controller) {
-      if (!rootCID) rootCID = block.cid.toString();
-      controller.enqueue(block);
-    },
-  });
-
-  const chunks: any[] = [];
-  const collectStream = new WritableStream({
-    write(chunk) {
-      chunks.push(chunk);
-    },
-  });
-
-  await stream
-    .pipeThrough(captureRoot)
-    .pipeThrough(carEncoder)
-    .pipeTo(collectStream);
+  await stream.pipeTo(
+    new WritableStream({
+      write(block) {
+        blocks.push(block);
+        rootCID = block.cid.toString();
+      },
+    }),
+  );
 
   if (!rootCID) throw new Error("Failed to generate CID");
+
+  const carEncoder = new CAREncoderStream([blocks[blocks.length - 1]!.cid]);
+  const chunks: Uint8Array[] = [];
+  await new ReadableStream({
+    pull(controller) {
+      if (blocks.length > 0) {
+        controller.enqueue(blocks.shift());
+      } else {
+        controller.close();
+      }
+    },
+  })
+    .pipeThrough(carEncoder)
+    .pipeTo(
+      new WritableStream({
+        write(chunk) {
+          chunks.push(chunk);
+        },
+      }),
+    );
+
   return {
     cid: rootCID,
     carBlob: new Blob(chunks, { type: "application/vnd.ipld.car" }),

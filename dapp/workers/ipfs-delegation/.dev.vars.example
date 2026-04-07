@@ -1,2 +1,4 @@
 FILEBASE_TOKEN=<filebase_api_token>
-PINATA_JWT=<pinata_jwt>
+ENABLE_PINATA_PINNING=false
+PINATA_JWT=<optional_pinata_jwt>
+PINATA_GROUP_ID=<optional_pinata_group_id>

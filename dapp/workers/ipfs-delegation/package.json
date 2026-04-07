@@ -4,12 +4,13 @@
   "description": "Cloudflare Worker for dual-provider IPFS uploads",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 8787",
+    "dev": "wrangler dev",
     "test": "bun test-upload.js",
     "deploy:testnet": "wrangler deploy --env testnet",
     "deploy:production": "wrangler deploy --env production"
   },
   "dependencies": {
+    "@ipld/car": "^5.4.2",
     "@stellar/stellar-sdk": "^14.6.1",
     "ipfs-car": "^3.1.0"
   },

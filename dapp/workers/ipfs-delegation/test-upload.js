@@ -2,12 +2,14 @@
 import "dotenv/config";
 import { Keypair } from "@stellar/stellar-sdk";
 import { createDirectoryEncoderStream, CAREncoderStream } from "ipfs-car";
+import { createHash } from "crypto";
 
 const DEV_URL = "https://ipfs-testnet.tansu.dev";
 const PROD_URL = "https://ipfs.tansu.dev";
 const ENV = process.env.ENV || "LOCAL";
 
-let WORKER_URL = "http://localhost:8787";
+let WORKER_URL =
+  process.env.PUBLIC_DELEGATION_API_URL || "http://localhost:8787";
 if (ENV === "DEV") {
   WORKER_URL = DEV_URL;
 } else if (ENV === "PROD") {
@@ -25,31 +27,41 @@ function arrayBufferToBase64(buffer) {
 
 async function packFilesToCar(files) {
   const stream = createDirectoryEncoderStream(files);
-  const carEncoder = new CAREncoderStream();
   let rootCID;
+  const blocks = [];
 
-  const captureRoot = new TransformStream({
-    transform(block, controller) {
-      if (!rootCID) rootCID = block.cid.toString();
-      controller.enqueue(block);
-    },
-  });
-
-  const chunks = [];
-  const collectStream = new WritableStream({
-    write(chunk) {
-      chunks.push(chunk);
-    },
-  });
-
-  await stream
-    .pipeThrough(captureRoot)
-    .pipeThrough(carEncoder)
-    .pipeTo(collectStream);
+  await stream.pipeTo(
+    new WritableStream({
+      write(block) {
+        blocks.push(block);
+        rootCID = block.cid.toString();
+      },
+    }),
+  );
 
   if (!rootCID) {
     throw new Error("Failed to compute test CID");
   }
+
+  const carEncoder = new CAREncoderStream([blocks[blocks.length - 1].cid]);
+  const chunks = [];
+  await new ReadableStream({
+    pull(controller) {
+      if (blocks.length > 0) {
+        controller.enqueue(blocks.shift());
+      } else {
+        controller.close();
+      }
+    },
+  })
+    .pipeThrough(carEncoder)
+    .pipeTo(
+      new WritableStream({
+        write(chunk) {
+          chunks.push(chunk);
+        },
+      }),
+    );
 
   return {
     cid: rootCID,
@@ -70,8 +82,11 @@ async function test() {
   const signer = process.env.TEST_SIGNER_SECRET
     ? Keypair.fromSecret(process.env.TEST_SIGNER_SECRET)
     : Keypair.random();
-  const message = `Tansu IPFS upload authorization\nCID: ${cid}`;
-  const signature = signer.sign(new TextEncoder().encode(message));
+  const message = `CID: ${cid}`;
+  const messageHash = createHash("sha256")
+    .update(`Stellar Signed Message:\n${message}`, "utf8")
+    .digest();
+  const signature = signer.sign(messageHash);
 
   try {
     const res = await fetch(WORKER_URL, {
@@ -110,18 +125,6 @@ async function test() {
 
     console.log("\n✅ Upload request completed successfully!");
     console.log("🔑 CID returned by proxy:", data.cid);
-    console.log(
-      "✅ Filebase success:",
-      data.filebase,
-      "| ✅ Pinata success:",
-      data.pinata,
-    );
-
-    if (!data.filebase || !data.pinata) {
-      console.warn(
-        "⚠️ One of the providers failed. Check logs and provider status.",
-      );
-    }
   } catch (err) {
     console.error("\n❌ Test failed:", err);
     process.exit(1);

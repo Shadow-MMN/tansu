@@ -1,7 +1,8 @@
 # IPFS Delegation Worker
 
 Cloudflare Worker that verifies a signed upload authorization and then uploads
-the CAR file to Filebase and Pinata in parallel.
+the CAR file to Filebase. Once Filebase succeeds, it pins the resulting CID on
+Pinata in the background when Pinata pinning is enabled.
 
 ## API
 
@@ -9,34 +10,38 @@ the CAR file to Filebase and Pinata in parallel.
 POST /
 {
   "cid": "<expected-root-cid>",
-  "message": "Tansu IPFS upload authorization\nCID: <expected-root-cid>",
+  "message": "CID: <expected-root-cid>",
   "signature": "<base64-signature>",
   "signerAddress": "G...",
   "car": "<base64-car-bytes>"
 }
 ```
 
-The worker verifies that the message signature matches `signerAddress` and that
-the signed message contains the CID being uploaded.
+The worker verifies the signature according to SEP-53:
+
+- it hashes `Stellar Signed Message:\n` + `message`
+- it verifies the signature against `signerAddress`
+- it checks the signed message contains the CID
+- it recalculates the root CID from the uploaded CAR and checks it matches
+- it uploads to Filebase with exponential backoff retries
+- it can pin that CID on Pinata asynchronously with exponential backoff retries
 
 ## Returns JSON
 
 ```json
 {
   "success": true,
-  "filebase": true,
-  "pinata": true,
-  "cid": "<cid>",
-  "providers": {
-    "filebase": { "ok": true, "name": "filebase" },
-    "pinata": { "ok": true, "name": "pinata" }
-  }
+  "cid": "<cid>"
 }
 ```
 
-- If both providers fail, `success` is `false` and the HTTP status is `502`.
-- If one provider fails, the request still succeeds as long as the content is
-  pinned by the other provider.
+- If Filebase upload fails, `success` is `false` and the HTTP status is `502`.
+- Pinata pinning is disabled by default.
+- If enabled, Pinata pinning does not block the response. It runs after
+  Filebase succeeds.
+- Filebase retries 3 times with exponential backoff.
+- When enabled, Pinata pin-by-CID retries 3 times with exponential backoff in
+  the background.
 
 ## Development
 
@@ -44,7 +49,9 @@ Add your provider tokens to `.dev.vars`:
 
 ```bash
 FILEBASE_TOKEN=<filebase_api_token>
-PINATA_JWT=<pinata_jwt>
+ENABLE_PINATA_PINNING=false
+PINATA_JWT=<optional_pinata_jwt>
+PINATA_GROUP_ID=<optional_pinata_group_id>
 ```
 
 ### Start the Worker
@@ -71,6 +78,11 @@ ENV=DEV bun run test  # Use testnet environment
 ENV=PROD bun run test # Use production environment
 ```
 
+The test script generates a CAR, signs the CID with a local Stellar key, and
+submits the same JSON payload the dapp sends. A successful local test confirms
+the blocking Filebase upload path. When Pinata pinning is enabled, that step
+runs asynchronously after the response is returned.
+
 ## Deployment
 
 ### Prerequisites
@@ -86,11 +98,15 @@ All secrets are stored in Cloudflare Secrets. Set them with wrangler:
 ```bash
 # Development
 bunx wrangler secret put FILEBASE_TOKEN --env testnet
+bunx wrangler secret put ENABLE_PINATA_PINNING --env testnet
 bunx wrangler secret put PINATA_JWT --env testnet
+bunx wrangler secret put PINATA_GROUP_ID --env testnet
 
 # Production
 bunx wrangler secret put FILEBASE_TOKEN --env production
+bunx wrangler secret put ENABLE_PINATA_PINNING --env production
 bunx wrangler secret put PINATA_JWT --env production
+bunx wrangler secret put PINATA_GROUP_ID --env production
 ```
 
 ### Development (Testnet)

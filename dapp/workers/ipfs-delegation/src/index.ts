@@ -1,17 +1,21 @@
 /**
- * Cloudflare Worker for delegated dual-provider IPFS uploads.
+ * Cloudflare Worker for delegated IPFS uploads.
  *
  * The dapp sends a signed message authorizing the expected CID plus the CAR
- * content to upload. The worker verifies the signature before uploading to
- * Filebase and Pinata in parallel.
+ * content to upload. The worker verifies the signature, uploads the CAR to
+ * Filebase, then pins the resulting CID on Pinata in the background.
  */
 
 import { Keypair } from "@stellar/stellar-sdk";
 import { Buffer } from "buffer";
+import { createHash } from "node:crypto";
+import { CarReader } from "@ipld/car";
 
 export interface Env {
   FILEBASE_TOKEN: string;
-  PINATA_JWT: string;
+  PINATA_JWT?: string;
+  PINATA_GROUP_ID?: string;
+  ENABLE_PINATA_PINNING?: string;
 }
 
 interface UploadRequest {
@@ -29,6 +33,12 @@ const ALLOWED_ORIGINS = [
   "https://tansu.xlm.sh",
   "https://deploy-preview-*--staging-tansu.netlify.app",
 ];
+const FILEBASE_MAX_ATTEMPTS = 3;
+const PINATA_MAX_ATTEMPTS = 3;
+
+function isPinataEnabled(env: Env): boolean {
+  return env.ENABLE_PINATA_PINNING === "true";
+}
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
   if (!origin) return {};
@@ -60,6 +70,12 @@ function buildUploadBlob(base64Car: string): Blob {
   });
 }
 
+function hashSep53Message(message: string): Buffer {
+  return createHash("sha256")
+    .update(`Stellar Signed Message:\n${message}`, "utf8")
+    .digest();
+}
+
 function validateUploadRequest(body: UploadRequest): void {
   const { cid, message, signature, signerAddress, car } = body;
 
@@ -69,12 +85,16 @@ function validateUploadRequest(body: UploadRequest): void {
     );
   }
 
+  if (!message.startsWith("CID: ")) {
+    throw new Error("Signed message must follow the expected CID format");
+  }
+
   if (!message.includes(`CID: ${cid}`)) {
     throw new Error("Signed message does not contain the expected CID");
   }
 
   const verified = Keypair.fromPublicKey(signerAddress).verify(
-    Buffer.from(new TextEncoder().encode(message)),
+    hashSep53Message(message),
     Buffer.from(decodeBase64(signature)),
   );
 
@@ -83,8 +103,59 @@ function validateUploadRequest(body: UploadRequest): void {
   }
 }
 
+async function calculateCidFromCar(carBlob: Blob): Promise<string> {
+  const reader = await CarReader.fromBytes(
+    new Uint8Array(await carBlob.arrayBuffer()),
+  );
+  const roots = await reader.getRoots();
+  const root = roots[0];
+
+  if (root) {
+    return root.toString();
+  }
+
+  let lastCid: string | undefined;
+  for await (const block of reader.blocks()) {
+    lastCid = block.cid.toString();
+  }
+
+  if (!lastCid) {
+    throw new Error("CAR file does not contain a root CID");
+  }
+
+  return lastCid;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withExponentialBackoff<T>(
+  operation: () => Promise<T>,
+  maxAttempts: number,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts - 1) {
+        await sleep(500 * 2 ** attempt);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const origin = request.headers.get("Origin");
     const corsHeaders = getCorsHeaders(origin);
 
@@ -143,91 +214,138 @@ export default {
       );
     }
 
-    // ---------- FILEBASE ----------
-    async function uploadToFilebase() {
-      try {
-        const res = await fetch("https://api.filebase.io/v1/ipfs/car", {
+    let calculatedCid: string;
+    try {
+      calculatedCid = await calculateCidFromCar(carBlob);
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error?.message ?? "Failed to calculate CID from CAR",
+        }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
+    if (calculatedCid !== body.cid) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `CID mismatch: expected ${body.cid}, got ${calculatedCid}`,
+        }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
+    async function uploadToFilebase(): Promise<void> {
+      await withExponentialBackoff(async () => {
+        const formData = new FormData();
+        formData.append("file", carBlob, `${body.cid}.car`);
+
+        const res = await fetch("https://rpc.filebase.io/api/v0/dag/import", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${env.FILEBASE_TOKEN}`,
           },
-          body: carBlob,
+          body: formData,
         });
 
         if (!res.ok) {
-          return { ok: false, error: `HTTP ${res.status}` };
+          throw new Error(`Filebase HTTP ${res.status}`);
         }
 
-        const data: any = await res.json();
-        const cid = data.cid || data.CID;
-
-        if (cid && cid !== body.cid) {
-          return { ok: false, error: "CID mismatch" };
+        const text = await res.text();
+        if (text && !text.includes(body.cid)) {
+          throw new Error("Filebase CID mismatch");
         }
-
-        return { ok: true };
-      } catch (e: any) {
-        return { ok: false, error: e.message };
-      }
+      }, FILEBASE_MAX_ATTEMPTS);
     }
 
-    // ---------- PINATA ----------
-    async function uploadToPinata(retries = 1): Promise<any> {
-      const formData = new FormData();
-      formData.append("file", carBlob, `${body.cid}.car`);
+    async function pinCidOnPinata(): Promise<void> {
+      if (!env.PINATA_JWT) {
+        throw new Error("Pinata JWT not configured");
+      }
 
-      try {
+      await withExponentialBackoff(async () => {
+        const payload: Record<string, unknown> = {
+          cid: body.cid,
+          name: `${body.cid}.car`,
+        };
+
+        if (env.PINATA_GROUP_ID) {
+          payload.group_id = env.PINATA_GROUP_ID;
+        }
+
         const res = await fetch(
-          "https://api.pinata.cloud/pinning/pinFileToIPFS",
+          "https://api.pinata.cloud/v3/files/public/pin_by_cid",
           {
             method: "POST",
             headers: {
               Authorization: `Bearer ${env.PINATA_JWT}`,
+              "Content-Type": "application/json",
             },
-            body: formData,
+            body: JSON.stringify(payload),
           },
         );
 
         if (!res.ok) {
-          if (retries > 0) return uploadToPinata(retries - 1);
-          return { ok: false, error: `HTTP ${res.status}` };
+          throw new Error(`Pinata HTTP ${res.status}`);
         }
 
         const data: any = await res.json();
-        if (data.IpfsHash && data.IpfsHash !== body.cid) {
-          return { ok: false, error: "CID mismatch" };
+        const cid = data?.data?.cid;
+        if (cid && cid !== body.cid) {
+          throw new Error("Pinata CID mismatch");
         }
-
-        return { ok: true };
-      } catch (e: any) {
-        if (retries > 0) return uploadToPinata(retries - 1);
-        return { ok: false, error: e.message };
-      }
+      }, PINATA_MAX_ATTEMPTS);
     }
 
-    // Run both
-    const [filebase, pinata] = await Promise.all([
-      uploadToFilebase(),
-      uploadToPinata(),
-    ]);
+    try {
+      await uploadToFilebase();
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error?.message ?? "Filebase upload failed",
+          cid: body.cid,
+        }),
+        {
+          status: 502,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
 
-    const success = filebase.ok || pinata.ok;
+    if (isPinataEnabled(env)) {
+      ctx.waitUntil(
+        pinCidOnPinata().catch((error) => {
+          console.error("Pinata pin by CID failed:", error);
+        }),
+      );
+    }
 
     return new Response(
       JSON.stringify({
-        success,
-        filebase: filebase.ok,
-        pinata: pinata.ok,
-        message: success
-          ? undefined
-          : `Filebase: ${filebase.error} | Pinata: ${pinata.error}`,
-        error: success
-          ? undefined
-          : `Filebase: ${filebase.error} | Pinata: ${pinata.error}`,
+        success: true,
         cid: body.cid,
       }),
       {
-        status: success ? 200 : 502,
+        status: 200,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",

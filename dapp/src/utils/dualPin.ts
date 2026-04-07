@@ -1,5 +1,5 @@
 /**
- * Dual IPFS upload client for the dApp.
+ * IPFS upload client for the dApp.
  *
  * The browser never uses FILEBASE_TOKEN or PINATA_JWT directly.
  * Those credentials stay on the delegation worker, and this module
@@ -9,23 +9,19 @@
 import { connectedPublicKey } from "./store";
 import { signMessageWithActiveWallet } from "../service/TxService";
 
-const DUAL_PIN_TIMEOUT_MS = 60_000;
-const AUTHORIZATION_PREFIX = "Tansu IPFS upload authorization";
+const DUAL_PIN_TIMEOUT_MS = 120_000;
+const WORKER_RETRY_DELAY_MS = 1_000;
 
 interface DualUploadApiResponse {
   cid?: string;
   success?: boolean;
-  filebase?: boolean;
-  pinata?: boolean;
   error?: string;
-  message?: string;
 }
 
 export interface DualUploadResult {
   cid: string;
   success: boolean;
-  filebase: boolean;
-  pinata: boolean;
+  error?: string;
 }
 
 interface UploadWithDelegationParams {
@@ -49,7 +45,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export function buildUploadAuthorizationMessage(cid: string): string {
-  return `${AUTHORIZATION_PREFIX}\nCID: ${cid}`;
+  return `CID: ${cid}`;
 }
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -58,13 +54,13 @@ async function readErrorMessage(response: Response): Promise<string> {
   try {
     if (contentType.includes("application/json")) {
       const data = (await response.json()) as DualUploadApiResponse;
-      return data.error ?? data.message ?? "Dual upload failed";
+      return data.error ?? "IPFS upload failed";
     }
 
     const text = await response.text();
-    return text || "Dual upload failed";
+    return text || "IPFS upload failed";
   } catch {
-    return "Dual upload failed";
+    return "IPFS upload failed";
   }
 }
 
@@ -85,53 +81,35 @@ function normalizeResult(
   }
 
   if (!result.success) {
-    throw new Error(
-      result.error ??
-        result.message ??
-        "Both IPFS providers failed to pin the content",
-    );
+    throw new Error(result.error ?? "IPFS upload failed");
   }
 
   const normalized: DualUploadResult = {
     cid,
     success: true,
-    filebase: Boolean(result.filebase),
-    pinata: Boolean(result.pinata),
+    error: result.error,
   };
 
-  // Partial success is acceptable because the content is pinned on at least one provider.
-  if (!normalized.filebase) {
-    console.warn("[IPFS] Filebase pin failed for CID:", cid);
-  }
-  if (!normalized.pinata) {
-    console.warn("[IPFS] Pinata pin failed for CID:", cid);
+  if (normalized.error) {
+    console.warn("[IPFS] Upload partially succeeded:", normalized.error);
   }
 
   return normalized;
 }
 
-export async function dualUpload({
-  cid,
-  carBlob,
-}: UploadWithDelegationParams): Promise<DualUploadResult> {
-  if (!cid) {
-    throw new Error("Missing expected CID for dual upload");
-  }
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  if (!(carBlob instanceof Blob) || carBlob.size === 0) {
-    throw new Error("Invalid CAR blob for dual upload");
-  }
-
-  const signerAddress = connectedPublicKey.get();
-  if (!signerAddress) {
-    throw new Error("Please connect your wallet first");
-  }
-
+async function uploadOnce(
+  cid: string,
+  carBlob: Blob,
+  signerAddress: string,
+): Promise<DualUploadResult> {
   const message = buildUploadAuthorizationMessage(cid);
   const { signedMessage, signerAddress: returnedSignerAddress } =
     await signMessageWithActiveWallet(message);
 
-  // The worker performs the actual Filebase and Pinata uploads with server-side tokens.
   const response = await fetch(import.meta.env.PUBLIC_DELEGATION_API_URL, {
     method: "POST",
     headers: {
@@ -156,6 +134,36 @@ export async function dualUpload({
   return normalizeResult(cid, result);
 }
 
+export async function uploadViaWorker({
+  cid,
+  carBlob,
+}: UploadWithDelegationParams): Promise<DualUploadResult> {
+  if (!cid) {
+    throw new Error("Missing expected CID for dual upload");
+  }
+
+  if (!(carBlob instanceof Blob) || carBlob.size === 0) {
+    throw new Error("Invalid CAR blob for dual upload");
+  }
+
+  const signerAddress = connectedPublicKey.get();
+  if (!signerAddress) {
+    throw new Error("Please connect your wallet first");
+  }
+
+  try {
+    return await uploadOnce(cid, carBlob, signerAddress);
+  } catch (firstError) {
+    await wait(WORKER_RETRY_DELAY_MS);
+
+    try {
+      return await uploadOnce(cid, carBlob, signerAddress);
+    } catch {
+      throw firstError;
+    }
+  }
+}
+
 /**
  * Compatibility wrapper for the existing upload flow.
  * Existing callers expect only the CID after a successful dual pin.
@@ -163,6 +171,6 @@ export async function dualUpload({
 export async function uploadWithDelegation(
   params: UploadWithDelegationParams,
 ): Promise<string> {
-  const result = await dualUpload(params);
+  const result = await uploadViaWorker(params);
   return result.cid;
 }

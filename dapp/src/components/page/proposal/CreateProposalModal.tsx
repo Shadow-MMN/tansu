@@ -353,9 +353,7 @@ const CreateProposalModal = () => {
         votingEndsAt,
         publicVoting: !isAnonymousVoting,
         outcomeContracts: contractOutcomes,
-        ...(votingType === "token" && tokenContract
-          ? { tokenContract }
-          : {}),
+        ...(votingType === "token" && tokenContract ? { tokenContract } : {}),
         onProgress: setStep,
       });
 

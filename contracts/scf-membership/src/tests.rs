@@ -22,7 +22,7 @@ mod nqg {
         pub fn get_voting_power_for_user(e: &Env, user: String) -> I256 {
             let pilot: String = e.storage().instance().get(&DataKey::Pilot).unwrap();
             if user == pilot {
-                I256::from_i32(e, 10)
+                I256::from_i128(e, 10_000_000_000_000_000_000i128)
             } else {
                 I256::from_i32(e, 1)
             }
@@ -114,7 +114,7 @@ fn test_governance() {
     let token_id = client.mint(&member);
 
     let governance = client.trait_values(&token_id, &trait_keys);
-    assert_eq!(governance, vec![&e, 0, 1]);
+    assert_eq!(governance, vec![&e, 0, 0]);
 
     let token_id = client.mint(&admin);
     client.set_trait(&token_id, &role_key, &3);
@@ -123,17 +123,17 @@ fn test_governance() {
     assert_eq!(role, 3);
 
     let nqg = client.trait_value(&token_id, &nqg_key);
-    assert_eq!(nqg, 10);
+    assert_eq!(nqg, 10_000_000);
 
     let governance = client.trait_values(&token_id, &trait_keys);
-    assert_eq!(governance, vec![&e, 3, 10]);
+    assert_eq!(governance, vec![&e, 3, 10_000_000]);
 
     let governance = client.governance(&token_id);
     assert_eq!(
         governance,
         types::Governance {
             role: types::Role::Pilot,
-            nqg: 10
+            nqg: 10_000_000
         }
     );
 }

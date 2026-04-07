@@ -38,10 +38,7 @@ export function parseContractError(error: any): string {
       errorMessage,
     );
 
-    if (
-      hasInvalidInputPattern &&
-      fnName === "build_commitments_from_votes"
-    ) {
+    if (hasInvalidInputPattern && fnName === "build_commitments_from_votes") {
       return `Invalid input for contract execution${where}. For anonymous voting, ensure your key file matches this proposal and try again.`;
     }
 

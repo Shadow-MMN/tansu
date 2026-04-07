@@ -18,7 +18,7 @@
       "dataType": {
         "type": "decimal",
         "signed": false,
-        "decimals": 15
+        "decimals": 6
       }
     }
   }

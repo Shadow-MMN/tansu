@@ -175,7 +175,7 @@ fn scf_voting() {
         &proposal_id,
         &Vote::PublicVote(PublicVote {
             address: setup.mando.clone(),
-            weight: 10,
+            weight: 10_000_000,
             vote_choice: VoteChoice::Approve,
         }),
     );

@@ -28,7 +28,7 @@ mod nqg {
     #[contractimpl]
     impl Mock {
         pub fn get_voting_power_for_user(e: &Env, _user: String) -> I256 {
-            I256::from_i32(e, 10)
+            I256::from_i128(e, 10_000_000_000_000_000_000i128)
         }
     }
 }

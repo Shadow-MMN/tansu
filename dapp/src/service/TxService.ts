@@ -31,10 +31,8 @@ async function withActiveWallet<T>({
     if (errMsg.includes("no wallet") || errMsg.includes("wallet not set")) {
       try {
         return await freighterAction();
-      } catch (freighterErr) {
-        throw new Error(fallbackErrorMessage, {
-          cause: freighterErr ?? kitErr,
-        });
+      } catch {
+        throw new Error(fallbackErrorMessage);
       }
     }
     throw kitErr;

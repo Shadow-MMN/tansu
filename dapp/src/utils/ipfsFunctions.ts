@@ -283,3 +283,92 @@ export async function packFilesToCar(files: File[]): Promise<CarPackResult> {
     carBlob: new Blob(chunks, { type: "application/vnd.ipld.car" }),
   };
 }
+
+interface UploadToIpfsProxyResponse {
+  cid?: string;
+  success?: boolean;
+  error?: string;
+}
+
+export async function uploadToIpfsProxy(params: {
+  cid: string;
+  carBlob: Blob;
+  signedTxXdr: string;
+}): Promise<string> {
+  const { cid, carBlob, signedTxXdr } = params;
+
+  if (!cid) {
+    throw new Error("Missing expected CID for IPFS upload");
+  }
+
+  if (!signedTxXdr) {
+    throw new Error("Missing signed transaction for IPFS upload");
+  }
+
+  if (!(carBlob instanceof Blob) || carBlob.size === 0) {
+    throw new Error("Invalid CAR blob for IPFS upload");
+  }
+
+  let binary = "";
+  for (const byte of new Uint8Array(await carBlob.arrayBuffer())) {
+    binary += String.fromCharCode(byte);
+  }
+  const car = btoa(binary);
+
+  async function uploadOnce(): Promise<string> {
+    const response = await fetch(import.meta.env.PUBLIC_DELEGATION_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cid,
+        signedTxXdr,
+        car,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!response.ok) {
+      let errorMessage = "IPFS upload failed";
+      try {
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const data = (await response.json()) as UploadToIpfsProxyResponse;
+          errorMessage = data.error ?? errorMessage;
+        } else {
+          errorMessage = (await response.text()) || errorMessage;
+        }
+      } catch {
+        // Keep the default message if parsing fails.
+      }
+      throw new Error(`${errorMessage} (${response.status})`);
+    }
+
+    const result = (await response.json()) as UploadToIpfsProxyResponse;
+    if (!result.cid) {
+      throw new Error("Upload response missing CID");
+    }
+    if (result.cid !== cid) {
+      throw new Error(
+        `Critical CID mismatch: expected ${cid}, got ${result.cid}`,
+      );
+    }
+    if (!result.success) {
+      throw new Error(result.error ?? "IPFS upload failed");
+    }
+    if (result.error) {
+      console.warn("[IPFS] Upload partially succeeded:", result.error);
+    }
+    return result.cid;
+  }
+
+  try {
+    return await uploadOnce();
+  } catch (firstError) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    try {
+      return await uploadOnce();
+    } catch {
+      throw firstError;
+    }
+  }
+}

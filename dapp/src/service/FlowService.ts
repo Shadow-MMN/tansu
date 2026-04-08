@@ -1,5 +1,4 @@
-import { packFilesToCar } from "../utils/ipfsFunctions";
-import { uploadWithDelegation } from "../utils/dualPin";
+import { packFilesToCar, uploadToIpfsProxy } from "../utils/ipfsFunctions";
 import type { OutcomeContract } from "../types/proposal";
 
 //
@@ -157,7 +156,7 @@ export async function createProposalFlow({
 
   // Step 3: Upload the pre-calculated CAR to IPFS using the Proxy
   onProgress?.(8); // Uploading to IPFS (UI index 3)
-  const uploadedCid = await uploadWithDelegation({
+  const uploadedCid = await uploadToIpfsProxy({
     cid,
     carBlob,
     signedTxXdr,
@@ -209,7 +208,7 @@ export async function joinCommunityFlow({
   if (profileFiles.length > 0 && carBlob) {
     // Step 3: Upload the pre-calculated CAR to IPFS using the Proxy
     onProgress?.(8);
-    const uploadedCid = await uploadWithDelegation({
+    const uploadedCid = await uploadToIpfsProxy({
       cid,
       carBlob,
       signedTxXdr,
@@ -280,7 +279,7 @@ export async function updateMemberFlow({
 
   if (profileFiles.length > 0 && carBlob) {
     onProgress?.(8);
-    const uploadedCid = await uploadWithDelegation({
+    const uploadedCid = await uploadToIpfsProxy({
       cid,
       carBlob,
       signedTxXdr,
@@ -336,7 +335,7 @@ export async function createProjectFlow({
 
   // Step 3 – Upload the pre-calculated CAR to IPFS using the Proxy
   onProgress?.(8);
-  const uploadedCid = await uploadWithDelegation({
+  const uploadedCid = await uploadToIpfsProxy({
     cid,
     carBlob,
     signedTxXdr,
@@ -416,7 +415,7 @@ export async function updateConfigFlow({
 
   // Step 3 – upload
   onProgress?.(8);
-  const uploadedCid = await uploadWithDelegation({
+  const uploadedCid = await uploadToIpfsProxy({
     cid,
     carBlob,
     signedTxXdr,

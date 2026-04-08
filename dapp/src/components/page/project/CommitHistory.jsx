@@ -61,7 +61,7 @@ const CommitHistory = () => {
 
   const addMaintainerBadge = () => {
     try {
-      const _cfg = loadConfigData();
+      const cfg = loadConfigData();
       if (
         configData &&
         configData.authorGithubNames &&

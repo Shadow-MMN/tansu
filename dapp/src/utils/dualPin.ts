@@ -3,7 +3,7 @@
  *
  * The browser never uses FILEBASE_TOKEN or PINATA_JWT directly.
  * Those credentials stay on the delegation worker, and this module
- * sends the raw files plus the already-signed transaction to that worker.
+ * sends the CAR payload plus the already-signed transaction to that worker.
  */
 
 const DUAL_PIN_TIMEOUT_MS = 120_000;
@@ -23,7 +23,7 @@ export interface DualUploadResult {
 
 interface UploadWithDelegationParams {
   cid: string;
-  files: File[];
+  carBlob: Blob;
   signedTxXdr: string;
 }
 
@@ -39,26 +39,10 @@ function toBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-interface UploadFilePayload {
-  name: string;
-  type: string;
-  content: string;
-}
-
-async function serializeFiles(files: File[]): Promise<UploadFilePayload[]> {
-  return await Promise.all(
-    files.map(async (file) => ({
-      name: file.name,
-      type: file.type,
-      content: toBase64(await file.arrayBuffer()),
-    })),
-  );
-}
-
 async function postUploadRequest(
   cid: string,
   signedTxXdr: string,
-  files: UploadFilePayload[],
+  carBase64: string,
 ): Promise<DualUploadResult> {
   const response = await fetch(import.meta.env.PUBLIC_DELEGATION_API_URL, {
     method: "POST",
@@ -66,7 +50,7 @@ async function postUploadRequest(
     body: JSON.stringify({
       cid,
       signedTxXdr,
-      files,
+      car: carBase64,
     }),
     signal: AbortSignal.timeout(DUAL_PIN_TIMEOUT_MS),
   });
@@ -113,7 +97,7 @@ async function postUploadRequest(
 
 async function uploadWithDelegationResult({
   cid,
-  files,
+  carBlob,
   signedTxXdr,
 }: UploadWithDelegationParams): Promise<DualUploadResult> {
   if (!cid) {
@@ -124,19 +108,19 @@ async function uploadWithDelegationResult({
     throw new Error("Missing signed transaction for dual upload");
   }
 
-  if (!files.length) {
-    throw new Error("Missing files for IPFS upload");
+  if (!(carBlob instanceof Blob) || carBlob.size === 0) {
+    throw new Error("Invalid CAR blob for IPFS upload");
   }
 
-  const serializedFiles = await serializeFiles(files);
+  const carBase64 = toBase64(await carBlob.arrayBuffer());
 
   try {
-    return await postUploadRequest(cid, signedTxXdr, serializedFiles);
+    return await postUploadRequest(cid, signedTxXdr, carBase64);
   } catch (firstError) {
     await wait(WORKER_RETRY_DELAY_MS);
 
     try {
-      return await postUploadRequest(cid, signedTxXdr, serializedFiles);
+      return await postUploadRequest(cid, signedTxXdr, carBase64);
     } catch {
       throw firstError;
     }

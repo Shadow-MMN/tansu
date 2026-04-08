@@ -7,7 +7,7 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { createDirectoryEncoderStream } from "ipfs-car";
+import { createDirectoryEncoderStream, CAREncoderStream } from "ipfs-car";
 
 const DEV_URL = "https://ipfs-testnet.tansu.dev";
 const PROD_URL = "https://ipfs.tansu.dev";
@@ -30,13 +30,15 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-async function calculateDirectoryCid(files) {
+async function packFilesToCar(files) {
   const stream = createDirectoryEncoderStream(files);
   let rootCID;
+  const blocks = [];
 
   await stream.pipeTo(
     new WritableStream({
       write(block) {
+        blocks.push(block);
         rootCID = block.cid.toString();
       },
     }),
@@ -45,7 +47,31 @@ async function calculateDirectoryCid(files) {
   if (!rootCID) {
     throw new Error("Failed to compute test CID");
   }
-  return rootCID;
+
+  const carEncoder = new CAREncoderStream([blocks[blocks.length - 1].cid]);
+  const chunks = [];
+  await new ReadableStream({
+    pull(controller) {
+      if (blocks.length > 0) {
+        controller.enqueue(blocks.shift());
+      } else {
+        controller.close();
+      }
+    },
+  })
+    .pipeThrough(carEncoder)
+    .pipeTo(
+      new WritableStream({
+        write(chunk) {
+          chunks.push(chunk);
+        },
+      }),
+    );
+
+  return {
+    cid: rootCID,
+    car: new Blob(chunks, { type: "application/vnd.ipld.car" }),
+  };
 }
 
 function buildSignedTestTransaction(signer) {
@@ -75,8 +101,7 @@ async function test() {
     "test.txt",
     { type: "text/plain" },
   );
-  const files = [testFile];
-  const cid = await calculateDirectoryCid(files);
+  const { cid, car } = await packFilesToCar([testFile]);
 
   const signer = process.env.TEST_SIGNER_SECRET
     ? Keypair.fromSecret(process.env.TEST_SIGNER_SECRET)
@@ -92,13 +117,7 @@ async function test() {
       body: JSON.stringify({
         cid,
         signedTxXdr,
-        files: await Promise.all(
-          files.map(async (file) => ({
-            name: file.name,
-            type: file.type,
-            content: arrayBufferToBase64(await file.arrayBuffer()),
-          })),
-        ),
+        car: arrayBufferToBase64(await car.arrayBuffer()),
       }),
     });
 

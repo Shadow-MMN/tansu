@@ -37,7 +37,7 @@
     "react-dom": "^19.2.5",
     "react18-json-view": "0.2.10",
     "recharts": "3.8.1",
-    "toml": "^3.0.0",
+    "toml": "^4.1.1",
     "typescript": "^6.0.2"
   },
   "devDependencies": {

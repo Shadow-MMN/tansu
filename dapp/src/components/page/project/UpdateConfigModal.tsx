@@ -163,7 +163,7 @@ function serializeToml(data: Record<string, any>): string {
     const accounts = (data["ACCOUNTS"] as string[])
       .map((a) => `    "${a}"`)
       .join(",\n");
-    lines.push(`ACCOUNTS=[\n${accounts}\n]`);
+    lines.push("ACCOUNTS=[\n" + accounts + "\n]");
   }
 
   lines.push("");

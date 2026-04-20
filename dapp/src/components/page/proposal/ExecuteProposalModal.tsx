@@ -346,7 +346,7 @@ const ExecuteProposalModal: React.FC<ExecuteProposalModalProps> = ({
               <Step step={step} totalSteps={totalSteps} />
               <Title
                 title="Finalize the Vote Execution"
-                description="Review the transaction details before execution. You can verify the XDR and proceed with the final step."
+                description="Review the transaction details before execution."
               />
               <VotingResult voteStatus={displayVoteStatus} />
 

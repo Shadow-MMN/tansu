@@ -1,0 +1,5 @@
+[build]
+  # This file lives in dapp/, so build from the current directory.
+  base = "."
+  command = "bun run build"
+  publish = "dist"

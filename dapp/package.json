@@ -76,7 +76,11 @@
     "lint": "prettier -c . && eslint src/ --ext .ts,.tsx,.jsx && ts-prune --project tsconfig.json && bun scripts/validate-contract-errors.js",
     "validate-errors": "bun scripts/validate-contract-errors.js",
     "format": "prettier --write .",
-    "audit": "bun run build:lighthouse && bunx serve dist -l 3000 & sleep 8 && bunx lighthouse http://localhost:3000 --output=json --output-path=./lighthouse-local-results.json --chrome-flags=\"--headless --disable-dev-shm-usage\" && pkill -f serve && cat lighthouse-local-results.json | jq '.categories | with_entries(.value = .value.score)'"
+    "audit": "bun run build:lighthouse && bunx serve dist -l 3000 & sleep 8 && bunx lighthouse http://localhost:3000 --output=json --output-path=./lighthouse-local-results.json --chrome-flags=\"--headless --disable-dev-shm-usage\" && pkill -f serve && cat lighthouse-local-results.json | jq '.categories | with_entries(.value = .value.score)'",
+    "netlify:status": "bunx netlify status",
+    "netlify:link:staging": "bunx netlify link --id b637f4df-4886-4cc7-bc3b-6bfa12e6f351",
+    "netlify:link:production": "bunx netlify link --id 12f7130e-323b-42d5-b2cb-69df80676a79",
+    "netlify:deploy": "bunx netlify deploy --prod"
   },
   "type": "module",
   "version": "0.0.1",

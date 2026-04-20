@@ -121,28 +121,72 @@ what not to do; the reader has to go look for context elsewhere.
 Squash-merge is systematically used to maintain a linear history. It's
 important to check the message on the squash commit.
 
-## Making a release
+## Deployment and release operations
 
-Following is the process that the development team follows in order to make
-a release.
+This section is the canonical reference for deployments. Keep deployment steps
+up to date here first.
 
-Python:
+### Python release
 
 1. Update the version in the main `pyproject.toml`.
-2. Build locally using `hatch build`, and verify the content of the artifacts
-3. Submit PR, wait for tests to pass, and merge release into `main`
-4. Trigger manually the release workflow.
-5. Check that release has been deployed to PyPI
+2. Build locally using `hatch build`, and verify the content of the artifacts.
+3. Submit a PR, wait for tests to pass, and merge into `main`.
+4. Trigger the release workflow manually.
+5. Check that the release has been deployed to PyPI.
 
-dApp:
+### dApp (`dapp/`) deployment via Netlify
 
-1. Push on `app_prod`.
-2. Check Netlify and the deployment.
-3. Trigger manually the IPFS workflow.
-4. Update the CID on the Tansu linked address. See https://xlm.sh/
+The dApp can be deployed to two Netlify projects:
 
-Contract:
+- Staging: `https://testnet.tansu.dev` (`b637f4df-4886-4cc7-bc3b-6bfa12e6f351`)
+- Production: `https://app.tansu.dev` (`12f7130e-323b-42d5-b2cb-69df80676a79`)
 
-1. Push on `main` with a tag `v*`.
-2. Upload the WASM for the smart contract.
-3. Propose an update of the contract, get the approvals, execute to update. See Makefile.
+Automatic Netlify branch deploy sources:
+
+- Staging (`testnet.tansu.dev`): branch `main`.
+- Production (`app.tansu.dev`): branch `app_prod`.
+
+Locally we can test using the Netlify CLI:
+
+1. Link the local `dapp/` folder to the target Netlify project:
+    - Staging: `bunx netlify link --id b637f4df-4886-4cc7-bc3b-6bfa12e6f351`
+    - Production: `bunx netlify link --id 12f7130e-323b-42d5-b2cb-69df80676a79`
+2. Verify the active target: `bunx netlify status`
+3. Deploy: `bunx netlify deploy --prod`
+
+Once on Netlify on production, the dApp can be deployed on IPFS:
+
+1. Trigger the dApp IPFS deployment workflow.
+2. Update the CID on the Tansu linked address. See https://xlm.sh/
+
+### Smart contract release and upgrade
+
+Contract artifacts are published by GitHub Actions on tag push:
+
+1. Ensure code is merged and stable on `main`.
+2. Create and push a tag matching `v*` (for example `v1.2.3`).
+3. Confirm `.github/workflows/contract-release.yml` completes and publishes the
+   release artifact.
+
+Then execute on-chain upgrade flow (see `Makefile` targets for exact commands):
+
+1. Build/upload the new WASM.
+2. Propose upgrade (`make contract_propose_upgrade network=<network>`).
+3. Approve upgrade (`make contract_approve_upgrade network=<network>`).
+4. Finalize upgrade (`make contract_finalize_upgrade network=<network>`).
+
+### Website (`website/`) deployment
+
+The website is built with Docusaurus. Validate before deployment:
+
+1. `cd website`
+2. `bun install --frozen-lockfile`
+3. `bun run build`
+
+Deployment is managed on Netlify. After publishing, verify the expected site
+and environment in the Netlify UI.
+
+### IPFS delegation worker deployment
+
+For worker setup and deployment instructions, use the existing guide at
+`dapp/workers/ipfs-delegation/README.md`.

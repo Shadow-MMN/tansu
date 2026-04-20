@@ -17,6 +17,10 @@ export interface Env {
   ENABLE_PINATA_PINNING?: string;
 }
 
+interface WorkerExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
 interface UploadRequest {
   cid: string;
   signedTxXdr: string;
@@ -62,7 +66,8 @@ function decodeBase64(base64: string): Uint8Array {
 }
 
 export function buildUploadBlob(base64Car: string): Blob {
-  return new Blob([decodeBase64(base64Car)], {
+  const bytes = new Uint8Array(decodeBase64(base64Car));
+  return new Blob([bytes], {
     type: "application/vnd.ipld.car",
   });
 }
@@ -152,7 +157,7 @@ export default {
   async fetch(
     request: Request,
     env: Env,
-    ctx: ExecutionContext,
+    ctx: WorkerExecutionContext,
   ): Promise<Response> {
     const origin = request.headers.get("Origin");
     const corsHeaders = getCorsHeaders(origin);

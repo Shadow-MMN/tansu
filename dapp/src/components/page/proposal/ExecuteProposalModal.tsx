@@ -13,7 +13,10 @@ import {
 } from "types/proposal";
 import { toast } from "utils/utils";
 import VotingResult from "./VotingResult";
-import { computeAnonymousVotingData } from "utils/anonymousVoting";
+import {
+  computeAnonymousVotingData,
+  validateAnonymousKeyForProject,
+} from "utils/anonymousVoting";
 import { loadedPublicKey } from "@service/walletService";
 import classNames from "classnames";
 import AnonymousTalliesDisplay from "./AnonymousTalliesDisplay";
@@ -129,8 +132,6 @@ const ExecuteProposalModal: React.FC<ExecuteProposalModalProps> = ({
       if (!parsed.privateKey)
         throw new Error("Invalid key-file – missing privateKey field");
       // Validate uploaded key against on-chain config (centralized helper)
-      const { validateAnonymousKeyForProject } =
-        await import("../../../utils/anonymousVoting");
       await validateAnonymousKeyForProject(projectName!, parsed.publicKey);
       setPrivateKey(parsed.privateKey);
       await computeTallies(parsed.privateKey);

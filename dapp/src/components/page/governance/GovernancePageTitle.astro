@@ -46,7 +46,7 @@ import Button from "components/utils/Button";
       toast.error("Something Went Wrong!", error.message);
     }
     connectedPublicKey.subscribe((publicKey) => {
-      if (maintainers.includes(publicKey)) {
+      if (publicKey && maintainers.includes(publicKey)) {
         createProposalButton?.classList.remove("hidden");
       }
     });

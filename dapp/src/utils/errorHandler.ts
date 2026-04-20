@@ -77,7 +77,7 @@ export function withErrorHandling<T, Args extends any[]>(
     try {
       return await fn(...args);
     } catch (error) {
-      handleError(error, context, { rethrow: true });
+      throw new Error(handleError(error, context));
     }
   };
 }

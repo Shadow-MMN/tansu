@@ -258,7 +258,7 @@ export async function packFilesToCar(files: File[]): Promise<CarPackResult> {
   if (!rootCID) throw new Error("Failed to generate CID");
 
   const carEncoder = new CAREncoderStream([blocks[blocks.length - 1]!.cid]);
-  const chunks: Uint8Array[] = [];
+  const chunks: BlobPart[] = [];
 
   await new ReadableStream({
     pull(controller) {
@@ -273,7 +273,7 @@ export async function packFilesToCar(files: File[]): Promise<CarPackResult> {
     .pipeTo(
       new WritableStream({
         write(chunk) {
-          chunks.push(chunk);
+          chunks.push(new Uint8Array(chunk));
         },
       }),
     );

@@ -16,6 +16,7 @@ import {
 import { handleFreighterError } from "../utils/errorHandler";
 import type { VoteType } from "types/proposal";
 import { signAndSend } from "./TxService";
+import { encryptWithPublicKey } from "../utils/crypto";
 
 /**
  * Get configured contract client instance (using proven working Tansu instance)
@@ -209,7 +210,6 @@ export async function voteToProposal(
 
     // Encrypt votes and seeds using project-configured public key
     const saltPrefix = `${maintainer}:${project_name}:${proposal_id}`;
-    const { encryptWithPublicKey } = await import("../utils/crypto");
 
     let encryptedSeeds: string[];
     let encryptedVotes: string[];

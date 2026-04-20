@@ -1,3 +1,5 @@
+import { ContractErrors } from "../../packages/tansu";
+
 // Contract error messages that mirror the bindings but provide user-friendly descriptions
 //
 // ⚠️  IMPORTANT: When bindings are updated, this file MUST be updated to match!
@@ -62,36 +64,33 @@ export type ContractErrorMessageKey = keyof typeof contractErrorMessages;
  * This should be called during development/build to catch mismatches
  */
 export function validateContractErrorMapping(): void {
-  // Import bindings dynamically to avoid circular dependencies
-  import("../../packages/tansu")
-    .then(({ ContractErrors }) => {
-      const bindingKeys = Object.keys(ContractErrors)
-        .map(Number)
-        .sort((a, b) => a - b);
-      const constantKeys = Object.keys(contractErrorMessages)
-        .map(Number)
-        .sort((a, b) => a - b);
+  try {
+    const bindingKeys = Object.keys(ContractErrors)
+      .map(Number)
+      .sort((a, b) => a - b);
+    const constantKeys = Object.keys(contractErrorMessages)
+      .map(Number)
+      .sort((a, b) => a - b);
 
-      if (bindingKeys.length !== constantKeys.length) {
+    if (bindingKeys.length !== constantKeys.length) {
+      throw new Error(
+        `Contract error mapping mismatch: bindings have ${bindingKeys.length} errors, constants have ${constantKeys.length} errors`,
+      );
+    }
+
+    for (let i = 0; i < bindingKeys.length; i++) {
+      if (bindingKeys[i] !== constantKeys[i]) {
         throw new Error(
-          `Contract error mapping mismatch: bindings have ${bindingKeys.length} errors, constants have ${constantKeys.length} errors`,
+          `Contract error mapping mismatch at index ${i}: binding key ${bindingKeys[i]} vs constant key ${constantKeys[i]}`,
         );
       }
+    }
 
-      for (let i = 0; i < bindingKeys.length; i++) {
-        if (bindingKeys[i] !== constantKeys[i]) {
-          throw new Error(
-            `Contract error mapping mismatch at index ${i}: binding key ${bindingKeys[i]} vs constant key ${constantKeys[i]}`,
-          );
-        }
-      }
-
-      console.log("✅ Contract error mapping validation passed");
-    })
-    .catch((error) => {
-      console.warn(
-        "⚠️ Could not validate contract error mapping:",
-        error.message,
-      );
-    });
+    console.log("✅ Contract error mapping validation passed");
+  } catch (error: any) {
+    console.warn(
+      "⚠️ Could not validate contract error mapping:",
+      error?.message ?? String(error),
+    );
+  }
 }

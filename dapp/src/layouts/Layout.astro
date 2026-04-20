@@ -92,7 +92,7 @@ const { title, page } = Astro.props;
       try {
         const accepted = localStorage.getItem("tansu_tos_accepted");
         if (!accepted) {
-          await mountModal(
+          await mountModal<{ onAccept: () => void; onDecline: () => void }>(
             `terms-modal-container ${MODAL_CLASS}`,
             () => import("components/utils/TermsAcceptanceModal.tsx"),
             (onClose) => ({

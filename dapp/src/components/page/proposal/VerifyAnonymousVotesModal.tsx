@@ -4,7 +4,10 @@ import Step from "components/utils/Step";
 import Button from "components/utils/Button";
 import AnonymousTalliesDisplay from "./AnonymousTalliesDisplay";
 import { useState } from "react";
-import { computeAnonymousVotingData } from "utils/anonymousVoting";
+import {
+  computeAnonymousVotingData,
+  validateAnonymousKeyForProject,
+} from "utils/anonymousVoting";
 import type { VoteStatus } from "types/proposal";
 import classNames from "classnames";
 
@@ -57,8 +60,6 @@ const VerifyAnonymousVotesModal: React.FC<Props> = ({
       const parsed = JSON.parse(txt);
       if (!parsed.privateKey) throw new Error("Invalid key file");
       // Validate uploaded key against on-chain config (centralized helper)
-      const { validateAnonymousKeyForProject } =
-        await import("utils/anonymousVoting");
       await validateAnonymousKeyForProject(projectName!, parsed.publicKey);
       setProcessingError(null);
       const count = await computeTalliesAndProof(parsed.privateKey);

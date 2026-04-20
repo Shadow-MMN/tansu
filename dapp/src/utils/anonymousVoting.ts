@@ -94,11 +94,15 @@ export async function computeAnonymousVotingData(
   const votes: any[] = rawProposal?.vote_data?.votes ?? [];
 
   // Extract proposer address (normalize to string for comparison)
-  const proposerRaw = rawProposal?.proposer;
-  const proposerAddr: string =
-    typeof proposerRaw === "string"
-      ? proposerRaw
-      : (proposerRaw?.address ?? proposerRaw?.value ?? "");
+  const proposerRaw = rawProposal?.proposer as unknown;
+  const proposerAddr: string = (() => {
+    if (typeof proposerRaw === "string") return proposerRaw;
+    if (proposerRaw && typeof proposerRaw === "object") {
+      const proposerObj = proposerRaw as { address?: string; value?: string };
+      return proposerObj.address ?? proposerObj.value ?? "";
+    }
+    return "";
+  })();
 
   // Normalize vote to { tag, data } (SDK may return [tag, data] or { tag, values: [data] })
   function getVoteTagAndData(vote: any): { tag: string; data: any } {
@@ -253,13 +257,18 @@ export async function computeAnonymousVotingData(
     }
   }
 
-  return {
+  const result: AnonymousVotingData = {
     tallies: talliesArr,
     seeds: seedsArr,
     voteCounts,
     voteStatus,
     decodedVotes: decodedPerVoter,
-    proofOk,
-    proofErrorMessage: proofErrorMessage ?? undefined,
   };
+
+  if (verifyProof) {
+    result.proofOk = proofOk;
+    result.proofErrorMessage = proofErrorMessage;
+  }
+
+  return result;
 }

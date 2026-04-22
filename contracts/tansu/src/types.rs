@@ -1,7 +1,7 @@
 use soroban_sdk::{Address, Bytes, BytesN, String, Symbol, Val, Vec, contracttype};
 
 // Constants
-pub const TIMELOCK_DELAY: u64 = 24 * 0; // 24 hours in seconds
+pub const TIMELOCK_DELAY: u64 = 24 * 3600; // 24 hours in seconds
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]

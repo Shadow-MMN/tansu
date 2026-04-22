@@ -110,6 +110,14 @@ export type ProjectKey =
       values: readonly [Buffer];
     }
   | {
+      tag: "Voters";
+      values: readonly [Buffer, u32];
+    }
+  | {
+      tag: "Vote";
+      values: readonly [Buffer, u32, string];
+    }
+  | {
       tag: "AnonymousVoteConfig";
       values: readonly [Buffer];
     }

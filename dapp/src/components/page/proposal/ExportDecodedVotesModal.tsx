@@ -50,7 +50,6 @@ const ExportDecodedVotesModal: React.FC<Props> = ({
 
         <div className="flex flex-col gap-2 text-sm text-secondary">
           <p>Rows to export: {decodedVotes.length}</p>
-          <p>Format: CSV</p>
         </div>
 
         <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-[18px]">

@@ -76,9 +76,6 @@ const AnonymousTalliesDisplay: React.FC<Props> = ({
           </details>
 
           <div className="flex flex-col items-center justify-between gap-3 flex-wrap mt-3">
-            <p className="text-xs md:text-sm text-secondary max-w-prose">
-              Exporting decoded votes compromise the privacy model.
-            </p>
             <Button
               type="primary"
               size="sm"
